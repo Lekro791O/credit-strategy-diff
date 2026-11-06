@@ -1,0 +1,15 @@
+﻿APP_ID;PREFIX;CLASS;SUFFIX;ARRAY_KEY;KEY;PATH;VALUE_BEFORE;VALUE_AFTER;ADJUSTED_BEFORE;ADJUSTED_AFTER;DIFF_FLAG;CHANGE_TYPE
+1001;company;decisionResult;;;decision;company.decisionResult.decision;APPROVE;VERIFICATION;APPROVE;VERIFICATION;1;VALUE_CHANGED
+1001;company;decisionResult;;;businessDecision;company.decisionResult.businessDecision;OFFER;OFFER;OFFER;OFFER;0;SAME
+1001;company;decisionResult;;;riskSegment;company.decisionResult.riskSegment;;R2;;R2;1;ATTRIBUTE_NEW
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;company.scoreCardResult.scoreCard.name;TAKEUP_RATE_IP;TAKEUP_RATE_IP;TAKEUP_RATE_IP;TAKEUP_RATE_IP;0;SAME
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;company.scoreCardResult.scoreCard.value;0.42;0.58;(0.3 - 0.6];(0.3 - 0.6];1;VALUE_CHANGED
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;version;company.scoreCardResult.scoreCard.version;v3;v4;v3;v4;1;VALUE_CHANGED
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;name;company.scoreCardResult.scoreCard.name;PD_RETAIL;PD_RETAIL;PD_RETAIL;PD_RETAIL;0;SAME
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;value;company.scoreCardResult.scoreCard.value;0.11;0.11;(0 - 0.3];(0 - 0.3];0;SAME
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;version;company.scoreCardResult.scoreCard.version;v7;v7;v7;v7;0;SAME
+1001;company;limitResult;Limit;;limit;company.limitResult.Limit.limit;117325;96500;(100K - 250K];(0 - 100K];1;VALUE_CHANGED
+1001;company;limitResult;Limit;;currency;company.limitResult.Limit.currency;RUB;RUB;RUB;RUB;0;SAME
+1001;company;rejectReasons;reason;AGELOW@21;code;company.rejectReasons.reason.code;AGELOW@21;AGELOW@21;AGELOW@21;AGELOW@21;0;SAME
+1001;company;rejectReasons;reason;NOINCOME;code;company.rejectReasons.reason.code;NOINCOME;NOINCOME;NOINCOME;NOINCOME;0;SAME
+1001;company;rejectReasons;reason;DOCS_EXPIRED;code;company.rejectReasons.reason.code;;DOCS_EXPIRED;;DOCS_EXPIRED;1;ATTRIBUTE_NEW

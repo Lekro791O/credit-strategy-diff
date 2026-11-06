@@ -1,0 +1,15 @@
+﻿APP_ID;PREFIX;CLASS;SUFFIX;ARRAY_KEY;KEY;VALUE_BEFORE;VALUE_AFTER;ADJUSTED_BEFORE;ADJUSTED_AFTER;DIFF_FLAG;COMMENT
+1001;company;decisionResult;;;decision;APPROVE;VERIFICATION;APPROVE;VERIFICATION;1;решение изменилось
+1001;company;decisionResult;;;businessDecision;OFFER;OFFER;OFFER;OFFER;0;
+1001;company;decisionResult;;;riskSegment;;R2;;R2;1;атрибут добавился в AFTER
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;TAKEUP_RATE_IP;TAKEUP_RATE_IP;TAKEUP_RATE_IP;TAKEUP_RATE_IP;0;
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;0.42;0.58;(0.3 - 0.6];(0.3 - 0.6];1;VALUE изменился, бакет тот же
+1001;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;version;v3;v4;v3;v4;1;перекатали скоркарту
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;name;PD_RETAIL;PD_RETAIL;PD_RETAIL;PD_RETAIL;0;
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;value;0.11;0.11;(0 - 0.3];(0 - 0.3];0;
+1001;company;scoreCardResult;scoreCard;PD_RETAIL;version;v7;v7;v7;v7;0;
+1001;company;limitResult;Limit;;limit;117325;96500;(100K - 250K];(0 - 100K];1;бакет лимита сдвинулся вниз
+1001;company;limitResult;Limit;;currency;RUB;RUB;RUB;RUB;0;
+1001;company;rejectReasons;reason;AGELOW@21;;AGELOW@21;AGELOW@21;AGELOW@21;AGELOW@21;0;
+1001;company;rejectReasons;reason;NOINCOME;;NOINCOME;NOINCOME;NOINCOME;NOINCOME;0;
+1001;company;rejectReasons;reason;DOCS_EXPIRED;;;DOCS_EXPIRED;;DOCS_EXPIRED;1;новый стоп-фактор в AFTER

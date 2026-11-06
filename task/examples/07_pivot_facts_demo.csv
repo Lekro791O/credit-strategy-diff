@@ -1,0 +1,60 @@
+﻿PREFIX;CLASS;SUFFIX;ARRAY_KEY;KEY;VALUE_ADJUSTED;DIFF_FLAG;SOURCE;CNT
+company;decisionResult;;;decision;APPROVE;0;BEFORE (MASTER);123
+company;decisionResult;;;decision;APPROVE;0;AFTER (BETA);123
+company;decisionResult;;;decision;APPROVE;1;BEFORE (MASTER);6
+company;decisionResult;;;decision;APPROVE;1;AFTER (BETA);15
+company;decisionResult;;;decision;REJECT;0;BEFORE (MASTER);229
+company;decisionResult;;;decision;REJECT;0;AFTER (BETA);229
+company;decisionResult;;;decision;REJECT;1;BEFORE (MASTER);15
+company;decisionResult;;;decision;REJECT;1;AFTER (BETA);6
+company;decisionResult;;;decision;VERIFICATION;0;BEFORE (MASTER);88
+company;decisionResult;;;decision;VERIFICATION;0;AFTER (BETA);88
+company;decisionResult;;;decision;VERIFICATION;1;BEFORE (MASTER);4
+company;decisionResult;;;decision;VERIFICATION;1;AFTER (BETA);4
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;TAKEUP_RATE_IP;0;BEFORE (MASTER);223
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;TAKEUP_RATE_IP;0;AFTER (BETA);223
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;TAKEUP_RATE_IP;1;AFTER (BETA);15
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0 - 0.3];0;BEFORE (MASTER);96
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0 - 0.3];0;AFTER (BETA);96
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0 - 0.3];1;BEFORE (MASTER);2
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0 - 0.3];1;AFTER (BETA);4
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.3 - 0.6];0;BEFORE (MASTER);78
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.3 - 0.6];0;AFTER (BETA);78
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.3 - 0.6];1;BEFORE (MASTER);5
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.3 - 0.6];1;AFTER (BETA);3
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.6 - 0.9];0;BEFORE (MASTER);34
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.6 - 0.9];0;AFTER (BETA);34
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.6 - 0.9];1;BEFORE (MASTER);3
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.6 - 0.9];1;AFTER (BETA);2
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.9 - 1.0];0;BEFORE (MASTER);15
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.9 - 1.0];0;AFTER (BETA);15
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.9 - 1.0];1;BEFORE (MASTER);1
+company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;(0.9 - 1.0];1;AFTER (BETA);2
+company;scoreCardResult;scoreCard;PD_RETAIL;name;PD_RETAIL;0;BEFORE (MASTER);206
+company;scoreCardResult;scoreCard;PD_RETAIL;name;PD_RETAIL;0;AFTER (BETA);206
+company;scoreCardResult;scoreCard;PD_RETAIL;name;PD_RETAIL;1;BEFORE (MASTER);15
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0 - 0.3];0;BEFORE (MASTER);102
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0 - 0.3];0;AFTER (BETA);102
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0 - 0.3];1;BEFORE (MASTER);6
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0 - 0.3];1;AFTER (BETA);3
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0.3 - 0.6];0;BEFORE (MASTER);71
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0.3 - 0.6];0;AFTER (BETA);71
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0.3 - 0.6];1;BEFORE (MASTER);4
+company;scoreCardResult;scoreCard;PD_RETAIL;value;(0.3 - 0.6];1;AFTER (BETA);7
+company;limitResult;Limit;;limit;0;0;BEFORE (MASTER);215
+company;limitResult;Limit;;limit;0;0;AFTER (BETA);215
+company;limitResult;Limit;;limit;(0 - 100K];0;BEFORE (MASTER);115
+company;limitResult;Limit;;limit;(0 - 100K];0;AFTER (BETA);115
+company;limitResult;Limit;;limit;(0 - 100K];1;BEFORE (MASTER);16
+company;limitResult;Limit;;limit;(100K - 250K];0;BEFORE (MASTER);56
+company;limitResult;Limit;;limit;(100K - 250K];0;AFTER (BETA);56
+company;limitResult;Limit;;limit;(100K - 250K];1;AFTER (BETA);13
+company;limitResult;Limit;;limit;(250K - 1M];0;BEFORE (MASTER);75
+company;limitResult;Limit;;limit;(250K - 1M];0;AFTER (BETA);75
+company;limitResult;Limit;;limit;(250K - 1M];1;BEFORE (MASTER);13
+company;limitResult;Limit;;limit;(250K - 1M];1;AFTER (BETA);16
+company;rejectReasons;reason;AGELOW@21;;AGELOW@21;0;BEFORE (MASTER);4
+company;rejectReasons;reason;AGELOW@21;;AGELOW@21;0;AFTER (BETA);4
+company;rejectReasons;reason;AGELOW@21;;AGELOW@21;1;BEFORE (MASTER);4
+company;rejectReasons;reason;NOINCOME;;NOINCOME;0;BEFORE (MASTER);12
+company;rejectReasons;reason;NOINCOME;;NOINCOME;0;AFTER (BETA);12

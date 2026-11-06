@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Прототип сводного отчёта — WebDataRocks Pivot Table</title>
+<!-- WebDataRocks Pivot Table: https://habr.com/ru/articles/478750/ -->
+<link rel="stylesheet" href="https://cdn.webdatarocks.com/latest/webdatarocks.min.css">
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.toolbar.min.js"></script>
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.js"></script>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin:0; padding:16px; background:#fff; color:#333; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.sub { font-size:13px; color:#666; margin:0 0 14px; }
+  #pivot { width:100%; height:640px; }
+  /* Подсветка колонок DIFF_FLAG = 1. В WebDataRocks conditional formatting работает
+     по значению меры, поэтому «мягкую» подсветку среза различий делаем через CSS-хук
+     по подписи колонки либо через report.conditions (пример ниже в коде). */
+</style>
+</head>
+<body>
+
+<h1>Сводный отчёт по прогону: BEFORE (MASTER) vs AFTER (BETA)</h1>
+<p class="sub">Демонстрационные данные. Строки — иерархия атрибута ответа СПР, колонки — DIFF_FLAG × срез, значения — количество заявок.</p>
+
+<div id="pivot"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Компактное описание витрины из модуля 3.
+// Формат: [PREFIX, CLASS, SUFFIX, ARRAY_KEY, KEY, VALUE_ADJUSTED,
+//          before_diff0, after_diff0, before_diff1, after_diff1]
+// ---------------------------------------------------------------------------
+const RAW = [
+  ["company","decisionResult","","","decision","APPROVE",            123,123,  6, 15],
+  ["company","decisionResult","","","decision","REJECT",              229,229, 15,  6],
+  ["company","decisionResult","","","decision","VERIFICATION",         88, 88,  4,  4],
+
+  ["company","scoreCardResult","scoreCard","TAKEUP_RATE_IP","name","TAKEUP_RATE_IP", 223,223, 0, 15],
+  ["company","scoreCardResult","scoreCard","TAKEUP_RATE_IP","value","(0 - 0.3]",      96, 96, 2,  4],
+  ["company","scoreCardResult","scoreCard","TAKEUP_RATE_IP","value","(0.3 - 0.6]",    78, 78, 5,  3],
+  ["company","scoreCardResult","scoreCard","TAKEUP_RATE_IP","value","(0.6 - 0.9]",    34, 34, 3,  2],
+  ["company","scoreCardResult","scoreCard","TAKEUP_RATE_IP","value","(0.9 - 1.0]",    15, 15, 1,  2],
+  ["company","scoreCardResult","scoreCard","PD_RETAIL","name","PD_RETAIL",           206,206,15,  0],
+  ["company","scoreCardResult","scoreCard","PD_RETAIL","value","(0 - 0.3]",          102,102, 6,  3],
+  ["company","scoreCardResult","scoreCard","PD_RETAIL","value","(0.3 - 0.6]",         71, 71, 4,  7],
+
+  ["company","limitResult","Limit","","limit","0",                         215,215, 0,  0],
+  ["company","limitResult","Limit","","limit","(0 - 100K]",                115,115,16,  0],
+  ["company","limitResult","Limit","","limit","(100K - 250K]",              56, 56, 0, 13],
+  ["company","limitResult","Limit","","limit","(250K - 1M]",                75, 75,13, 16],
+
+  ["company","rejectReasons","reason","AGELOW@21","","AGELOW@21",   4,  4, 4,  0],
+  ["company","rejectReasons","reason","NOINCOME","","NOINCOME",    12, 12, 0,  0]
+];
+
+// Разворачиваем в плоский набор фактов — ровно такой набор отдаёт модуль 3.
+const data = [{
+  PREFIX:         { type: "string" },
+  CLASS:          { type: "string" },
+  SUFFIX:         { type: "string" },
+  ARRAY_KEY:      { type: "string" },
+  KEY:            { type: "string" },
+  VALUE_ADJUSTED: { type: "string" },
+  DIFF_FLAG:      { type: "string" },
+  SOURCE:         { type: "string" },
+  CNT:            { type: "number" }
+}];
+
+RAW.forEach(r => {
+  const [PREFIX, CLASS, SUFFIX, ARRAY_KEY, KEY, VALUE_ADJUSTED, b0, a0, b1, a1] = r;
+  [["0","BEFORE (MASTER)",b0], ["0","AFTER (BETA)",a0],
+   ["1","BEFORE (MASTER)",b1], ["1","AFTER (BETA)",a1]].forEach(([DIFF_FLAG, SOURCE, CNT]) => {
+    if (CNT > 0) data.push({ PREFIX, CLASS, SUFFIX, ARRAY_KEY, KEY, VALUE_ADJUSTED, DIFF_FLAG, SOURCE, CNT });
+  });
+});
+
+new WebDataRocks({
+  container: "#pivot",
+  toolbar: true,
+  report: {
+    dataSource: { data: data },
+    slice: {
+      // classic-раскладка: каждый уровень иерархии — отдельная колонка,
+      // как в исходном макете отчёта.
+      rows: [
+        { uniqueName: "PREFIX" },
+        { uniqueName: "CLASS" },
+        { uniqueName: "SUFFIX" },
+        { uniqueName: "ARRAY_KEY" },
+        { uniqueName: "KEY" },
+        { uniqueName: "VALUE_ADJUSTED" }
+      ],
+      columns: [
+        { uniqueName: "DIFF_FLAG" },
+        { uniqueName: "SOURCE" },
+        { uniqueName: "[Measures]" }
+      ],
+      measures: [
+        { uniqueName: "CNT", aggregation: "sum", caption: "Заявок" }
+      ]
+    },
+    options: {
+      grid: { type: "classic", showTotals: "off", showGrandTotals: "columns" },
+      configuratorActive: false
+    },
+    // Пример conditional formatting: мягкая подсветка малых значений —
+    // «мы не уверены в ошибке» (см. требования модуля 3).
+    conditions: [
+      { formula: "#value > 0 AND #value < 10", measure: "CNT",
+        format: { backgroundColor: "#FCE4D6", color: "#333333" } }
+    ]
+  }
+});
+</script>
+
+<p class="sub" style="margin-top:12px">
+  Дальше по клику на число должна открываться модалка со списком заявок этого бакета
+  (идентификаторы приходят из витрины модуля 3), а из неё — сравнение конкретной заявки
+  BEFORE / AFTER в табличном и нативном виде.
+</p>
+
+</body>
+</html>

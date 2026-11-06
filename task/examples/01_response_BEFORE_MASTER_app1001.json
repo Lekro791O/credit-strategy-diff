@@ -1,0 +1,29 @@
+{
+  "company": {
+    "decisionResult": {
+      "decision": "APPROVE",
+      "businessDecision": "OFFER",
+      "calculatedAt": "2026-07-07T21:45:50.123Z"
+    },
+    "scoreCardResult": [
+      {
+        "name": "TAKEUP_RATE_IP",
+        "value": 0.42,
+        "version": "v3"
+      },
+      {
+        "name": "PD_RETAIL",
+        "value": 0.11,
+        "version": "v7"
+      }
+    ],
+    "limitResult": {
+      "limit": 117325,
+      "currency": "RUB"
+    },
+    "rejectReasons": [
+      "AGELOW@21",
+      "NOINCOME"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+﻿APP_ID;SOURCE;PREFIX;CLASS;SUFFIX;ARRAY_KEY;KEY;VALUE;ADJUSTED_VALUE
+1001;BEFORE;company;decisionResult;;;decision;APPROVE;APPROVE
+1001;BEFORE;company;decisionResult;;;businessDecision;OFFER;OFFER
+1001;BEFORE;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;name;TAKEUP_RATE_IP;TAKEUP_RATE_IP
+1001;BEFORE;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;value;0.42;(0.3 - 0.6]
+1001;BEFORE;company;scoreCardResult;scoreCard;TAKEUP_RATE_IP;version;v3;v3
+1001;BEFORE;company;scoreCardResult;scoreCard;PD_RETAIL;name;PD_RETAIL;PD_RETAIL
+1001;BEFORE;company;scoreCardResult;scoreCard;PD_RETAIL;value;0.11;(0 - 0.3]
+1001;BEFORE;company;scoreCardResult;scoreCard;PD_RETAIL;version;v7;v7
+1001;BEFORE;company;limitResult;Limit;;limit;117325;(100K - 250K]
+1001;BEFORE;company;limitResult;Limit;;currency;RUB;RUB
+1001;BEFORE;company;rejectReasons;reason;AGELOW@21;;AGELOW@21;AGELOW@21
+1001;BEFORE;company;rejectReasons;reason;NOINCOME;;NOINCOME;NOINCOME
