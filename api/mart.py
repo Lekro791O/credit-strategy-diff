@@ -70,6 +70,9 @@ _FILTERS = {
 class SQLiteMart:
     """Витрина сравнения + слой разрезов поверх SQLite."""
 
+    fact_table = "mart"   # имя таблицы для фактов (facts.py)
+    run_clause = ""       # условие на run_id для много-прогонных сторов
+
     def __init__(self, path: Optional[Path] = None):
         self.path = Path(path) if path else None
         self.conn = sqlite3.connect(
@@ -139,6 +142,12 @@ class SQLiteMart:
 
     # ---------- сервисные запросы для UI ----------
 
+    def query(self, sql: str, params: tuple = ()) -> list[dict]:
+        """Унифицированный запрос для facts.py: список dict."""
+        cur = self.conn.execute(sql, list(params))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
     def close(self) -> None:
         self.conn.close()
 
@@ -173,3 +182,107 @@ class SQLiteMart:
             "SELECT * FROM mart WHERE APP_ID = ? ORDER BY PATH, ARRAY_KEY", (app_id,)
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+class DuckMart:
+    """Витрина поверх MartStore подписки 2 (DuckDB + изоляция проверок).
+
+    Тот же публичный интерфейс, что у SQLiteMart: rows/count/app_ids/
+    segments/total_apps (делегирует MartAPI), query/decision_stats/
+    app_attribute_rows — прямые SQL по view comparison. Файл — один
+    прогон, run_id фиксирован: один прогон = один стор.
+    """
+    RUN_ID = "run"
+    fact_table = "comparison"
+    run_clause = f"run_id = '{RUN_ID}'"
+    backend_name = "DuckDB (mart/)"
+
+    def __init__(self, path):
+        from pathlib import Path as _P
+        self.path = _P(path)
+        self._store = None
+
+    def _ensure_store(self):
+        if self._store is None:
+            from mart.store import MartStore  # на Windows падает (fcntl) — фолбэк снаружи
+            self._store = MartStore(self.path)
+        return self._store
+
+    def probe(self) -> None:
+        """Проверка доступности стека подписки 2 на этой машине."""
+        self._ensure_store()
+
+    # ---------- загрузка ----------
+
+    def load(self, rows: Iterable[dict], segments: Iterable[dict]) -> None:
+        if self.path.exists():  # чистая замена прогона
+            self.path.unlink()
+            self._store = None
+        self._ensure_store().save_run(self.RUN_ID, rows, segments)
+
+    # ---------- MartAPI (контракт, делегируем) ----------
+
+    @property
+    def api(self):
+        return self._ensure_store().for_run(self.RUN_ID)
+
+    def rows(self, **filters) -> Iterable[dict]:
+        return self.api.rows(**filters)
+
+    def count(self, **filters) -> int:
+        return self.api.count(**filters)
+
+    def app_ids(self, **filters) -> list[str]:
+        return self.api.app_ids(**filters)
+
+    def segments(self) -> Iterable[dict]:
+        return self.api.segments()
+
+    def total_apps(self) -> int:
+        return self.api.total_apps()
+
+    # ---------- сервисные запросы для UI ----------
+
+    def query(self, sql: str, params: tuple = ()) -> list[dict]:
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            cur = con.execute(sql, list(params))
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+        finally:
+            con.close()
+
+    def decision_stats(self) -> dict:
+        segs = self.query(
+            "SELECT DECISION_BEFORE, DECISION_AFTER, DECISION_CHANGED "
+            f"FROM segments WHERE {self.run_clause}")
+        before: dict[str, int] = {}
+        after: dict[str, int] = {}
+        changed = 0
+        for s in segs:
+            b, a = s.get("DECISION_BEFORE") or "?", s.get("DECISION_AFTER") or "?"
+            before[b] = before.get(b, 0) + 1
+            after[a] = after.get(a, 0) + 1
+            if s.get("DECISION_CHANGED"):
+                changed += 1
+        with_diffs = self.query(
+            "SELECT COUNT(DISTINCT APP_ID) AS n FROM comparison "
+            f"WHERE {self.run_clause} AND DIFF_FLAG = 1")[0]["n"]
+        return {"total_apps": len(segs), "apps_with_diffs": with_diffs,
+                "apps_decision_changed": changed,
+                "decision_before": before, "decision_after": after}
+
+    def app_attribute_rows(self, app_id: str) -> list[dict]:
+        return self.query(
+            "SELECT APP_ID, PREFIX, CLASS, SUFFIX, ARRAY_KEY, KEY, PATH, "
+            "VALUE_BEFORE, VALUE_AFTER, ADJUSTED_BEFORE, ADJUSTED_AFTER, "
+            f"DIFF_FLAG, CHANGE_TYPE FROM comparison "
+            f"WHERE {self.run_clause} AND APP_ID = ? "
+            "ORDER BY PATH, ARRAY_KEY", (app_id,))
+
+    def close(self) -> None:
+        self._store = None
+
+    def reopen(self) -> None:
+        self._store = None

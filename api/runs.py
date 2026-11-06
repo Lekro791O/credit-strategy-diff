@@ -26,7 +26,7 @@ from . import checks as checks_mod
 from . import config, llm as llm_mod, workspace
 from .demo_data import build_demo
 from .facts import fact_rows
-from .mart import SQLiteMart
+from .mart import DuckMart, SQLiteMart
 from .models import Run, RunConfig, RunSummary, Stage
 
 _STAGES = ["normalize", "compare", "facts", "checks", "llm"]
@@ -146,11 +146,15 @@ class RunManager:
 
         # --- этап 1+2: нормализация и сравнение (подписка 1) ---
         rows, segments, ref, snapshot = self._build_mart(cfg)
-        mart = SQLiteMart(mart_path)
+        mart = self._make_mart(run_id)
         mart.load(rows, segments)
+        (config.RUNS_DIR / f"{run_id}.backend").write_text(
+            "duck" if isinstance(mart, DuckMart) else "sqlite")
+        backend = "DuckDB (подписка 2)" if isinstance(mart, DuckMart) \
+            else "SQLite (встроенный)"
         self._stage_begin(run, "normalize", ref, snapshot)
         self._stage_end(run, "normalize",
-                        f"{len(rows)} строк витрины, {len(segments)} заявок")
+                        f"{len(rows)} строк витрины, {len(segments)} заявок · {backend}")
 
         run = self.load(run_id)
         self._stage_begin(run, "compare", ref, snapshot)
@@ -170,14 +174,18 @@ class RunManager:
 
         # --- этап 4: проверки ---
         run = self.load(run_id)
-        specs = [c.model_dump() for c in cfg.checks]
         code_refs = "\n".join(f"• {c.source.kind}:{c.source.name}" for c in cfg.checks)
         self._stage_begin(run, "checks", "см. конфигурацию прогона", code_refs)
-        check_rows, errors = checks_mod.run_checks(mart, specs, cfg.user)
+        if isinstance(mart, DuckMart):
+            check_rows, errors, run_backend = self._run_checks_isolated(mart, cfg)
+        else:
+            specs = [c.model_dump() for c in cfg.checks]
+            check_rows, errors = checks_mod.run_checks(mart, specs, cfg.user)
+            run_backend = "в процессе приложения"
         run = self.load(run_id)
         run.check_rows = check_rows
         fails = sum(1 for r in check_rows if r.get("RESULT") == "FAIL")
-        msg = f"{len(check_rows)} строк, {fails} FAIL"
+        msg = f"{len(check_rows)} строк, {fails} FAIL · исполнение: {run_backend}"
         if errors:
             msg += f", ошибок исполнения: {len(errors)}"
         self._stage_end(run, "checks", msg)
@@ -193,7 +201,7 @@ class RunManager:
         if cfg.llm_opinion:
             run = self.load(run_id)
             self._stage_begin(run, "llm", "api/llm.py", "")
-            mart2 = SQLiteMart(mart_path)
+            mart2 = self.open_mart(run_id)
             opinion = llm_mod.ask_llm(llm_mod.build_summary(mart2, run.check_rows))
             mart2.close()
             run = self.load(run_id)
@@ -220,7 +228,49 @@ class RunManager:
 
     # ---------- доступ к витрине готового прогона ----------
 
-    def open_mart(self, run_id: str) -> SQLiteMart:
+    def _make_mart(self, run_id: str):
+        """DuckDB-хранилище подписки 2, если стек доступен на этой машине;
+        иначе встроенный SQLiteMart. (mart.store требует fcntl — на Windows
+        импорт падает, и приложение честно работает на фолбэке.)"""
+        duck = DuckMart(self._mart_path(run_id).with_suffix(".duckdb"))
+        try:
+            duck.probe()
+            return duck
+        except Exception:
+            return SQLiteMart(self._mart_path(run_id))
+
+    def _check_path(self, spec, user: str) -> str:
+        src = spec.source
+        if src.kind == "workspace":
+            return str(config.WORKSPACE_DIR / user / f"{src.name}.py")
+        if src.kind == "file":
+            return src.name
+        return str(config.BUILTIN_CHECKS_DIR / src.name)
+
+    def _run_checks_isolated(self, mart: DuckMart, cfg: RunConfig):
+        """Проверки подписки 2: отдельный процесс на проверку, снапшот
+        витрины, таймаут, валидация строк и APP_IDS."""
+        from checkrunner import CheckRunner, CheckSpec
+        specs = [CheckSpec(path=self._check_path(c, cfg.user),
+                           params=dict(c.params))
+                 for c in cfg.checks if c.enabled]
+        runner = CheckRunner(backend="subprocess", trusted=True, timeout=120)
+        report = runner.run(store=mart._ensure_store(), run_id=DuckMart.RUN_ID,
+                            checks=specs)
+        id_by_label = {e.get("label"): e.get("check_id")
+                       for e in report["executions"] if e.get("check_id")}
+        rows = [dict(r, _check_id=id_by_label.get(r.get("LABEL"), "?"),
+                     _ref=e) for r in report["rows"]]
+        errors = [e for e in report["executions"] if e["status"] != "COMPLETED"]
+        return rows, errors, "изолированный процесс (checkrunner/)"
+
+    def open_mart(self, run_id: str):
+        marker = config.RUNS_DIR / f"{run_id}.backend"
+        duck_path = self._mart_path(run_id).with_suffix(".duckdb")
+        backend = marker.read_text().strip() if marker.exists() else (
+            "duck" if duck_path.exists() else "sqlite")
+        if backend == "duck":
+            return DuckMart(duck_path)
         mart = SQLiteMart()
         mart.path = self._mart_path(run_id)
         mart.reopen()
