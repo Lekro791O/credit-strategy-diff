@@ -160,3 +160,27 @@ CLI поддерживает `--normalize module:callable`, `--compare`, `--segm
 
 См. [HANDOFF.md](HANDOFF.md) для точных правил counts и разрезов, статуса
 согласования с участниками 2 и 3 и результатов проверки.
+
+## Подключение к приложению из ветки app
+
+Приложение вызывает `from pipeline import build_mart`. Этот вход теперь
+экспортирован и совместим с `api/runs.py` без правок API:
+
+```python
+from pipeline import build_mart
+rows, segments = build_mart('task/samples',
+    {'kind': 'builtin', 'name': 'default'},
+    {'kind': 'builtin', 'name': 'default'})
+```
+
+Для полного набора передайте каталог `data/RUN-...` с
+`RESULTS/BEFORE_MASTER` и `RESULTS/AFTER_BETA`; также поддерживаются сам
+`RESULTS` и пара каталогов `BEFORE/AFTER`, как в samples.
+`normalize_cfg` и `compare_cfg` принимают `builtin/default`, callable либо
+`{'kind': 'module', 'name': 'my_module:function'}`. Источники workspace/file
+этим адаптером пока не разрешаются и вызывают понятный PipelineError.
+
+Интеграция проверена локально с веткой app: исходные JSON task/samples →
+595 строк витрины → SQLiteMart приложения → сводная таблица и проверки.
+4 заявки, 3 с различиями, 2 со сменой решения. Это реальные выданные samples,
+а не demo://synthetic. Тестов теперь 16, включая контракт build_mart.
