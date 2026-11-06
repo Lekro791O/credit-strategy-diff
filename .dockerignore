@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.git/
+.pytest_cache/
+data/
+*.duckdb
+tests/
+.vscode/
+.idea/
