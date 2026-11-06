@@ -1,0 +1,55 @@
+:root {
+  --bg: #f4f6f9; --card: #ffffff; --ink: #1c2430; --muted: #5a6b7d;
+  --line: #d5dde5; --accent: #2563eb; --fail: #fdecea; --fail-ink: #b3261e;
+  --low: #fdf6ec; --ok: #e8f5ec;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; }
+header { display: flex; align-items: center; gap: 24px; background: #16233a; color: #fff; padding: 10px 20px; }
+.brand { font-weight: 600; }
+nav#tabs a { color: #c9d6ea; text-decoration: none; margin-right: 14px; padding: 4px 2px; }
+nav#tabs a.active { color: #fff; border-bottom: 2px solid #7aa7f0; }
+.userbox { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c9d6ea; }
+.userbox input { border: 1px solid #3a4d6e; background: #0e1828; color: #fff; border-radius: 4px; padding: 4px 8px; }
+main { max-width: 1200px; margin: 20px auto; padding: 0 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+button.ghost { background: #eef2f7; color: var(--ink); border: 1px solid var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: #eef2f7; }
+tr.fail td { background: var(--fail); color: var(--fail-ink); }
+tr.fail.low td { background: var(--low); color: #7a6a4f; }
+tr:hover td { filter: brightness(.97); }
+td.clickable, a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px 18px; background: var(--card); }
+.stat .num { font-size: 24px; font-weight: 600; }
+.stat .lbl { color: var(--muted); font-size: 12px; }
+.stage { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.stage .st { width: 90px; font-size: 12px; }
+.stage .msg { color: var(--muted); font-size: 12px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge.done { background: var(--ok); color: #1c6b3a; }
+.badge.running { background: #e3edfd; color: var(--accent); }
+.badge.error { background: var(--fail); color: var(--fail-ink); }
+.badge.pending { background: #eef2f7; color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.pivot td { text-align: right; }
+.pivot td:first-child, .pivot th:first-child { text-align: left; }
+.toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 10px; }
+.toolbar > div { display: flex; flex-direction: column; }
+pre.code { background: #0e1828; color: #d8e2f0; padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; max-height: 60vh; }
+textarea.code { width: 100%; min-height: 320px; font-family: Consolas, monospace; font-size: 12px; }
+.modal.hidden { display: none; }
+.modal { position: fixed; inset: 0; background: rgba(10, 18, 30, .55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal-body { background: #fff; border-radius: 10px; width: min(900px, 92vw); max-height: 85vh; overflow: auto; padding: 14px 18px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
+.hint { color: var(--muted); font-size: 12px; }
+section.tabs { display: flex; gap: 6px; margin: 10px 0; }
+section.tabs button { background: #eef2f7; color: var(--ink); }
+section.tabs button.active { background: var(--accent); color: #fff; }

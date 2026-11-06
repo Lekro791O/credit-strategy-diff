@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Система анализа изменений СПР</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Сравнение решений СПР</div>
+  <nav id="tabs">
+    <a href="#/runs" data-tab="runs">Прогоны</a>
+    <a href="#/workspace" data-tab="workspace">Рабочая область</a>
+  </nav>
+  <div class="userbox">
+    <label>пользователь</label>
+    <input id="username" size="10">
+  </div>
+</header>
+<main id="view">Загрузка…</main>
+<div id="modal" class="modal hidden"><div class="modal-body">
+  <div class="modal-head"><span id="modal-title"></span>
+    <button onclick="closeModal()">✕</button></div>
+  <div id="modal-content"></div>
+</div></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

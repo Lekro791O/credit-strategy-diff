@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # опционально: мнение ИИ (OpenAI-совместимый чат-интерфейс)
+      # CSD_LLM_BASE_URL: "https://api.moonshot.ai/v1"
+      # CSD_LLM_API_KEY: "sk-..."
+      # CSD_LLM_MODEL: "kimi-k2-0711-preview"
+      - CSD_DATA_DIR=/app/data
