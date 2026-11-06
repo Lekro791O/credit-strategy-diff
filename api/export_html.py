@@ -10,6 +10,9 @@ from typing import Any
 
 COLS = ["LABEL", "SOURCE", "ARGUMENT", "CNT", "TOTAL", "METRIC",
         "RESULT", "CONFIDENCE"]
+COL_TITLES = {"LABEL": "проверка", "SOURCE": "срез", "ARGUMENT": "что именно",
+              "CNT": "числа", "TOTAL": "из", "METRIC": "метрика",
+              "RESULT": "итог", "CONFIDENCE": "уверенность"}
 
 
 def _esc(v: Any) -> str:
@@ -65,7 +68,7 @@ tr.fail.low td{{background:#fdf6ec;color:#7a6a4f}}
 <div class="cards">{cards}<div class="card"><div class="num">{fails}</div>
 <div class="lbl">проверок FAIL</div></div></div>
 <p><a href="{html.escape(app_url, quote=True)}">Сводный отчёт приложения →</a></p>
-<table><thead><tr><th>проверка</th>{''.join(f'<th>{c.lower()}</th>' for c in COLS)}<th>заявки</th></tr></thead>
+<table><thead><tr><th>проверка</th>{''.join(f'<th>{COL_TITLES[c]}</th>' for c in COLS)}<th>заявки</th></tr></thead>
 <tbody>{body}</tbody></table>
 <div class="meta">Сформировано приложением credit-strategy-diff. CONFIDENCE=LOW —
 срабатываний мало, это сигнал для проверки, а не подтверждённая поломка.</div>
