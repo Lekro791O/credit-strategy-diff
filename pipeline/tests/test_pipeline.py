@@ -248,6 +248,17 @@ class HandoffTests(unittest.TestCase):
         row = next(r for r in pair['comparison'] if r['KEY'] == 'hit')
         self.assertEqual((row['VALUE_BEFORE'], row['VALUE_AFTER']), ('true', 'NULL'))
 
+    def test_app_build_mart_entrypoint(self):
+        from pipeline import build_mart
+        rows, segments = build_mart(ROOT / 'task/samples',
+                                    {'kind': 'builtin', 'name': 'default'},
+                                    {'kind': 'builtin', 'name': 'default'})
+        expected = run_directories(ROOT / 'task/samples/BEFORE', ROOT / 'task/samples/AFTER')
+        self.assertEqual(rows, expected['comparison'])
+        self.assertEqual(segments, expected['segments'])
+        with self.assertRaises(PipelineError):
+            build_mart(ROOT / 'task')
+
     def test_demo_fact_schema(self):
         from pipeline import FACT_FIELDS
         rows = csv_rows(ROOT / 'task/examples/07_pivot_facts_demo.csv')
