@@ -36,9 +36,18 @@ def datasets() -> dict[str, Any]:
     """Доступные датасеты: демо всегда; выданный — если положен в data/."""
     found = []
     for d in sorted(config.DATA_DIR.glob("RUN-*")):
-        n_before = len(list((d / "RESULTS" / "BEFORE_MASTER").glob("*.json"))) \
-            if (d / "RESULTS" / "BEFORE_MASTER").exists() else 0
-        found.append({"id": str(d), "apps": n_before, "requires_pipeline": True})
+        # оба допустимых layout: RESULTS/BEFORE_MASTER+AFTER_BETA (прогон) и BEFORE+AFTER (samples)
+        for before_name, after_name in (("BEFORE_MASTER", "AFTER_BETA"), ("BEFORE", "AFTER")):
+            before = d / "RESULTS" / before_name
+            if not before.exists():
+                before = d / before_name
+            after = d / "RESULTS" / after_name if (d / "RESULTS" / after_name).exists() \
+                else d / after_name
+            if before.is_dir() and after.is_dir():
+                found.append({"id": str(d),
+                              "apps": len(list(before.glob("*.json"))),
+                              "requires_pipeline": True})
+                break
     return {"datasets": [{"id": config.DEMO_DATASET, "apps": 300,
                           "requires_pipeline": False}] + found}
 
