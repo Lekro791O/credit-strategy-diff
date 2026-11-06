@@ -275,6 +275,27 @@ section.tabs button.active { background: linear-gradient(135deg, #f06595, #d6336
 .counter.fail { background: var(--fail-bg); color: var(--fail-ink); }
 .counter.low { background: var(--low-bg); color: var(--low-ink); }
 
+/* последовательность процедур */
+.proc-item { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin: 5px 0; background: var(--pink-mist); }
+.proc-item .proc-move { display: flex; flex-direction: column; gap: 1px; }
+.proc-item .proc-move button { padding: 0 7px; font-size: 11px; line-height: 1.5; }
+.proc-item .proc-title { flex: 1; font-size: 13px; }
+
+/* настройки нормализации */
+.norm-settings { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+.norm-settings summary { cursor: pointer; font-weight: 600; color: var(--pink-deep); font-size: 13px; }
+.norm-rule, .norm-bucket { display: flex; gap: 6px; align-items: center; margin: 5px 0; flex-wrap: wrap; }
+
+/* источник проверки */
+.check-src { display: flex; gap: 6px; margin: 4px 0 2px 24px; align-items: center; }
+
+/* прогресс-бар прогона */
+.progress { height: 8px; border-radius: 6px; background: var(--pink-soft); overflow: hidden; margin: 8px 0; }
+.progress .bar { height: 100%; background: linear-gradient(90deg, #f06595, #d6336c); transition: width .4s ease; }
+
+/* фильтры разрезов */
+.seg-filter { max-width: 170px; font-size: 12px; }
+
 /* пустые состояния */
 .empty { text-align: center; padding: 26px 10px; color: var(--muted); }
 .empty svg { width: 130px; height: 96px; margin-bottom: 8px; }

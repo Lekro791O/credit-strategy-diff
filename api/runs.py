@@ -96,7 +96,11 @@ class RunManager:
 
     def create(self, cfg: RunConfig) -> Run:
         run = Run(id=uuid.uuid4().hex[:12], config=cfg)
-        run.stages = [Stage(name=n, title=_STAGE_TITLES[n]) for n in _STAGES
+        order = [s for s in cfg.stage_order if s in _STAGES]
+        for n in _STAGES:  # гарантируем полный набор этапов
+            if n not in order:
+                order.append(n)
+        run.stages = [Stage(name=n, title=_STAGE_TITLES[n]) for n in order
                       if not (n == "llm" and not cfg.llm_opinion)]
         self.save(run)
         return run
@@ -116,6 +120,7 @@ class RunManager:
             for st in run.stages:
                 if st.status == "running":
                     st.status = "error"
+                    st.error = run.error.splitlines()[-1][:300]
             self.save(run)
 
     def _run_sync(self, run_id: str) -> None:
@@ -158,24 +163,36 @@ class RunManager:
 
         run = self.load(run_id)
         self._stage_begin(run, "compare", ref, snapshot)
-        same = mart.conn.execute(
-            "SELECT COUNT(*) FROM mart WHERE CHANGE_TYPE = 'SAME'").fetchone()[0]
+        where_ct = (f"WHERE {mart.run_clause} AND" if mart.run_clause else "WHERE") + \
+                   " CHANGE_TYPE = 'SAME'"
+        same = mart.query(
+            f"SELECT COUNT(*) AS n FROM {mart.fact_table} {where_ct}")[0]["n"]
         self._stage_end(run, "compare",
                         f"{same} совпадающих строк, "
                         f"{len(rows) - same} с различиями")
 
         # --- этап 3: факты (демонстрация агрегатов; сводная считает по запросу) ---
         run = self.load(run_id)
-        self._stage_begin(run, "facts", "api/facts.py", "")
-        top = fact_rows(mart, ["path", "change_type"], {"diff_flag": 1}, limit=5)
-        if top:
-            d = top[0]["dims"]
-            self._stage_end(run, "facts",
-                            f"чаще всего меняется {d.get('path', '—')} "
-                            f"({change_type_ru(d.get('change_type', ''))}), "
-                            f"{top[0]['cnt_apps']} заявок")
+        facts_proc = self._procedure_callable(cfg.facts, cfg.user, "facts")
+        facts_ref, facts_snap = self._procedure_ref(cfg.facts, cfg.user)
+        self._stage_begin(run, "facts", facts_ref, facts_snap)
+        if facts_proc is not None:
+            # пользовательская процедура фактов: контракт run(comparison_rows, segments)
+            # -> dict(message=..., facts=[...]) или список фактов
+            out = facts_proc(rows, segments)
+            msg = out.get("message", f"фактов: {len(out.get('facts', []))}") \
+                if isinstance(out, dict) else f"фактов: {len(list(out))}"
+            self._stage_end(run, "facts", str(msg))
         else:
-            self._stage_end(run, "facts", "различий не найдено")
+            top = fact_rows(mart, ["path", "change_type"], {"diff_flag": 1}, limit=5)
+            if top:
+                d = top[0]["dims"]
+                self._stage_end(run, "facts",
+                                f"чаще всего меняется {d.get('path', '—')} "
+                                f"({change_type_ru(d.get('change_type', ''))}), "
+                                f"{top[0]['cnt_apps']} заявок")
+            else:
+                self._stage_end(run, "facts", "различий не найдено")
 
         # --- этап 4: проверки ---
         run = self.load(run_id)
@@ -189,6 +206,10 @@ class RunManager:
             run_backend = "в процессе приложения"
         run = self.load(run_id)
         run.check_rows = check_rows
+        run.errors = [{"check": e.get("check") or e.get("label") or e.get("origin", "?"),
+                       "status": e.get("status", "ERROR"),
+                       "error": e.get("error") or (e.get("diagnostic") or {})}
+                      for e in errors]
         fails = sum(1 for r in check_rows if r.get("RESULT") == "FAIL")
         msg = f"{len(check_rows)} строк, {fails} FAIL · исполнение: {run_backend}"
         if errors:
@@ -222,22 +243,120 @@ class RunManager:
                 self.save(run)
 
     def _build_mart(self, cfg: RunConfig) -> tuple[list[dict], list[dict], str, str]:
-        """Витрина: из pipeline (подписка 1), если доступен, иначе демо."""
+        """Витрина: из pipeline (подписка 1), если доступен, иначе демо.
+
+        Процедуры нормализации/сравнения: builtin (default), рабочая область
+        или .py-файл — последние два загружаются как вызываемые объекты и
+        передаются в pipeline.build_mart. Настройки нормализации
+        (исключения, режимы массивов, бакеты) собираются в pipeline.Config.
+        """
         if cfg.dataset.startswith("demo://"):
             return (*build_demo(), "builtin:api/demo_data.py",
-                    "Синтетический датасет: pipeline ещё не подключён")
+                    "Синтетический датасет: настройки нормализации не применяются")
         try:  # ожидаемый интерфейс подписки 1
             from pipeline import build_mart  # type: ignore
-            rows, segments = build_mart(
-                cfg.dataset,
-                cfg.normalize.model_dump(), cfg.compare.model_dump())
-            return rows, segments, "pipeline:build_mart", ""
+            norm_arg = self._procedure_callable(cfg.normalize, cfg.user, "normalize")
+            if norm_arg is None:
+                norm_arg = {"kind": cfg.normalize.kind, "name": cfg.normalize.name}
+                pconf = self._pipeline_config(cfg)
+                if pconf is not None:
+                    norm_arg["config"] = pconf
+            comp_arg = self._procedure_callable(cfg.compare, cfg.user, "compare")
+            if comp_arg is None:
+                comp_arg = {"kind": cfg.compare.kind, "name": cfg.compare.name}
+            rows, segments = build_mart(cfg.dataset, norm_arg, comp_arg)
+            ref = f"normalize: {self._procedure_ref(cfg.normalize, cfg.user)[0]} · " \
+                  f"compare: {self._procedure_ref(cfg.compare, cfg.user)[0]}"
+            return rows, segments, ref, ""
         except ImportError:
             raise RuntimeError(
                 "pipeline/ ещё не готов, а датасет не demo:// — "
                 "выберите демо-датасет или дождитесь подписки 1")
         except Exception:
             raise
+
+    # ---------- пользовательские процедуры и настройки нормализации ----------
+
+    def _procedure_callable(self, src, user: str, stage: str):
+        """Загрузить процедуру из workspace/файла как callable; None для builtin.
+        Контракт модуля: функция с именем этапа (normalize/compare/facts) или run."""
+        if src.kind == "builtin":
+            return None
+        path = self._check_path(type("S", (), {"source": src})(), user) \
+            if src.kind == "workspace" else src.name
+        import importlib.util
+        key = f"csd_proc_{stage}_{abs(hash(path))}"
+        spec = importlib.util.spec_from_file_location(key, path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"не удалось загрузить процедуру: {path}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        fn = getattr(mod, stage, None) or getattr(mod, "run", None)
+        if not callable(fn):
+            raise RuntimeError(
+                f"{path}: нужна функция «{stage}» или «run» — см. контракт процедур")
+        return fn
+
+    def _procedure_ref(self, src, user: str) -> tuple[str, str]:
+        if src.kind == "workspace":
+            p = config.WORKSPACE_DIR / user / f"{src.name}.py"
+            return f"workspace:{user}/{src.name}.py", p.read_text("utf-8") if p.exists() else ""
+        if src.kind == "file":
+            p = Path(src.name)
+            return f"file:{src.name}", p.read_text("utf-8") if p.exists() else ""
+        return "builtin:default", ""
+
+    def _bucket_fn(self, b):
+        from pipeline.config import example_bucket, identity_bucket
+        if not b:
+            return identity_bucket
+        if b.get("preset") == "example":
+            return example_bucket
+        rules = [(r.get("path_prefix", ""),
+                  sorted(float(x) for x in r.get("edges", [])))
+                 for r in (b.get("rules") or [])]
+        if not rules:
+            return identity_bucket
+
+        def bucket(path, value):
+            for prefix, edges in rules:
+                if prefix and not str(path).startswith(prefix):
+                    continue
+                try:
+                    n = float(value)
+                except (TypeError, ValueError):
+                    return value
+                prev = None
+                for edge in edges:
+                    if n <= edge:
+                        lo = "-∞" if prev is None else f"{prev:g}"
+                        return f"({lo} - {edge:g}]"
+                    prev = edge
+                return f"({edges[-1]:g}+)"
+            return value
+        return bucket
+
+    def _pipeline_config(self, cfg: RunConfig):
+        """Настройки нормализации UI -> pipeline.Config (контракт подписки 1).
+        База — default_config(); пользовательские правила дополняют/переопределяют."""
+        n = cfg.normalization or {}
+        if not any(n.get(k) for k in ("exclude", "array_rules", "aliases", "bucket")):
+            return None
+        from pipeline import ArrayRule
+        from pipeline.config import default_config
+        conf = default_config()
+        if n.get("exclude"):
+            conf.exclude = tuple(n["exclude"])
+        for r in n.get("array_rules", []):
+            conf.arrays[r["path"]] = ArrayRule(
+                mode=r.get("mode", "field"),
+                keys=tuple(r.get("keys", [])),
+                element_name=r.get("element_name", "") or "",
+                scalar_key=r.get("scalar_key") or None)
+        if n.get("aliases"):
+            conf.aliases = dict(n["aliases"])
+        conf.bucket = self._bucket_fn(n.get("bucket"))
+        return conf
 
     # ---------- доступ к витрине готового прогона ----------
 

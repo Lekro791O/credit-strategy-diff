@@ -120,3 +120,37 @@ def test_multiuser_isolation():
 def test_datasets_endpoint():
     data = client.get("/api/datasets").json()
     assert any(d["id"] == "demo://synthetic" for d in data["datasets"])
+
+
+def test_vertical_dims_and_exact_drill():
+    """SOURCE/бакет в сводной и drill-down, точно соответствующий ячейке."""
+    rid = _wait_done(_make_run()["id"])["id"]
+    facts = client.get(f"/api/runs/{rid}/facts?dims=path,source&diff_flag=1&limit=20").json()
+    assert facts["rows"]
+    g = facts["rows"][0]["dims"]
+    apps = client.get(f"/api/runs/{rid}/apps",
+                      params={"path": g["path"], "source": g["source"],
+                              "diff_flag": 1}).json()
+    assert apps["total"] > 0
+    fb = client.get(f"/api/runs/{rid}/facts?dims=bucket&diff_flag=1&limit=10").json()
+    assert fb["rows"]
+
+
+def test_segment_filters_apply_to_pivot_and_drill():
+    rid = _wait_done(_make_run()["id"])["id"]
+    vals = client.get(f"/api/runs/{rid}/segment_values").json()
+    assert vals["partner"]
+    p = vals["partner"][0]
+    facts = client.get(f"/api/runs/{rid}/facts",
+                       params={"dims": "path", "diff_flag": 1, "partner": p}).json()
+    assert facts["rows"]
+    apps = client.get(f"/api/runs/{rid}/apps",
+                      params={"diff_flag": 1, "partner": p}).json()
+    assert apps["total"] > 0
+
+
+def test_export_link_not_hardcoded():
+    rid = _wait_done(_make_run()["id"])["id"]
+    r = client.get(f"/api/runs/{rid}/checks/export.html")
+    assert "localhost:8000" not in r.text
+    assert "http://testserver/#/runs/" in r.text

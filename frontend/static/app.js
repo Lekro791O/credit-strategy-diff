@@ -5,8 +5,9 @@
 const $view = document.getElementById("view");
 let pollTimer = null;
 let LLM_CONFIGURED = false;
-let DIMS_LIST = ["path", "key", "change_type", "prefix", "class", "array_key",
-                 "value_before", "value_after", "adjusted_before", "adjusted_after", "diff_flag"];
+let DIMS_LIST = ["path", "key", "change_type", "prefix", "class", "suffix",
+                 "array_key", "diff_flag", "source", "value", "bucket",
+                 "value_before", "value_after", "adjusted_before", "adjusted_after"];
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- базовые помощники ----------
@@ -52,6 +53,12 @@ function fmtMetric(v) {
   return String(v);
 }
 
+function fmtDur(a, b) {
+  if (!a || !b) return "";
+  const s = b - a;
+  return s < 1 ? `${Math.round(s * 1000)} мс` : `${s.toFixed(1)} с`;
+}
+
 // ---------- русские подписи (технический код — в title) ----------
 
 const CHANGE_TYPE_RU = {
@@ -61,6 +68,14 @@ const CHANGE_TYPE_RU = {
 };
 const ctRu = v => CHANGE_TYPE_RU[v] || v;
 
+const DIM_RU = {
+  path: "путь атрибута", key: "имя атрибута", change_type: "тип изменения",
+  prefix: "префикс", class: "класс", suffix: "хвост пути", array_key: "ключ массива",
+  diff_flag: "есть различие", source: "срез", value: "значение на срезе",
+  bucket: "бакет значения", value_before: "значение (прод)", value_after: "значение (бета)",
+  adjusted_before: "бакет (прод)", adjusted_after: "бакет (бета)",
+};
+
 const STAGE_TITLES = {
   normalize: "Нормализация ответов", compare: "Сопоставление срезов",
   facts: "Подготовка фактов counts", checks: "Автоматические проверки",
@@ -68,6 +83,7 @@ const STAGE_TITLES = {
 };
 const STAGE_STATUS_RU = { pending: "ожидает", running: "в работе", done: "готов",
                           error: "ошибка", skipped: "пропущено" };
+const PROC_STAGES = ["normalize", "compare", "facts"];  // проверки идут своим блоком
 
 function statusBadge(s) {
   return `<span class="badge ${s}" title="${esc(s)}">${esc(STAGE_STATUS_RU[s] || s)}</span>`;
@@ -92,7 +108,7 @@ function emptyState(title, sub) {
     <div>${esc(sub || "")}</div></div>`;
 }
 
-// ---------- декор: иконки этапов и проверок (inline SVG) ----------
+// ---------- декор: иконки ----------
 
 const IC = (inner) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"
   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
@@ -154,13 +170,13 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 
-// ---------- параметры проверок: понятные подписи и точные единицы ----------
+// ---------- подписи проверок и параметров ----------
 
 const PARAM_LABELS = {
   min_share: ["минимальная доля заявок",
     "Доля, не проценты: 0.001 = 0.1%. Срабатывания реже этой доли игнорируются (считаются шумом)."],
   max_drop_rel: ["максимально допустимое падение",
-    "Относительное падение, не процентные пункты: 0.1 = 10% от базового значения. Пример: AR 32% → 21% — падение ≈ 34% (0.34) — это FAIL при пороге 0.1."],
+    "Относительное падение, не процентные пункты: 0.1 = 10% от базового значения. Пример: AR 32% → 21% — падение ≈ 34% (0.34) — это проблема при пороге 0.1."],
   low_confidence_cnt: ["низкая уверенность, если срабатываний меньше",
     "Строки с меньшим числом срабатываний подсвечиваются бледно: сигнал есть, уверенности нет."],
   app_ids_limit: ["сколько заявок сохранять в строке",
@@ -185,22 +201,153 @@ function paramsFields(file, params) {
   }).join("");
 }
 
-// ---------- прогоны: список + новый ----------
+// ---------- форма прогона ----------
+
+// состояние формы (заполняется при загрузке конфигурации)
+const formState = {
+  stage_order: ["normalize", "compare", "facts", "checks"],
+  procs: {  // источник процедуры по этапу
+    normalize: { kind: "builtin", name: "default" },
+    compare: { kind: "builtin", name: "default" },
+    facts: { kind: "builtin", name: "default" },
+  },
+  normalization: {},
+  checks: null, // null = дефолт (все встроенные)
+};
+
+function procPanelHtml() {
+  const items = formState.stage_order.filter(s => PROC_STAGES.includes(s));
+  return items.map(stage => {
+    const p = formState.procs[stage] || { kind: "builtin", name: "" };
+    return `<div class="proc-item" data-stage="${stage}">
+      <span class="proc-move">
+        <button class="ghost icon" title="раньше" onclick="moveProc('${stage}',-1)">↑</button>
+        <button class="ghost icon" title="позже" onclick="moveProc('${stage}',1)">↓</button>
+      </span>
+      <b class="proc-title">${esc(STAGE_TITLES[stage])}</b>
+      <select class="proc-src" data-stage="${stage}" onchange="procSrcChanged('${stage}')">
+        <option value="builtin" ${p.kind === "builtin" ? "selected" : ""}>встроенная</option>
+        <option value="workspace" ${p.kind === "workspace" ? "selected" : ""}>рабочая область</option>
+        <option value="file" ${p.kind === "file" ? "selected" : ""}>файл .py</option>
+      </select>
+      <input class="proc-name" data-stage="${stage}" placeholder="${p.kind === "file" ? "путь к .py" : "имя файла без .py"}"
+        value="${p.kind === "builtin" ? "" : esc(p.name)}" ${p.kind === "builtin" ? 'style="display:none"' : ""}>
+    </div>`;
+  }).join("");
+}
+
+function moveProc(stage, dir) {
+  const order = formState.stage_order.filter(s => PROC_STAGES.includes(s));
+  const i = order.indexOf(stage), j = i + dir;
+  if (j < 0 || j >= order.length) return;
+  order[i] = order[j]; order[j] = stage;
+  formState.stage_order = [...order, "checks"];
+  document.getElementById("proc-list").innerHTML = procPanelHtml();
+}
+
+function procSrcChanged(stage) {
+  const sel = document.querySelector(`.proc-src[data-stage="${stage}"]`);
+  const inp = document.querySelector(`.proc-name[data-stage="${stage}"]`);
+  inp.style.display = sel.value === "builtin" ? "none" : "";
+  formState.procs[stage] = { kind: sel.value, name: inp.value.trim() };
+}
+
+function normSettingsHtml() {
+  const n = formState.normalization || {};
+  const exclude = (n.exclude || ["appData.request_id", "appData.createDateTime"]).join("\n");
+  const rules = n.array_rules || [];
+  const bucket = n.bucket || { preset: "none", rules: [] };
+  const rulesRows = rules.map((r, i) => arrayRuleRow(i, r)).join("");
+  const bucketRows = (bucket.rules || []).map((r, i) => bucketRuleRow(i, r)).join("");
+  return `<details class="norm-settings">
+    <summary>Настройки нормализации — исключения, массивы, бакеты (контракт pipeline.Config)</summary>
+    <label>Технические поля — не участвуют в сравнении (путь с каждой строки)</label>
+    <textarea id="norm-exclude" rows="2" class="code" style="min-height:52px">${esc(exclude)}</textarea>
+    <label>Режимы массивов: по какому пути как сопоставлять элементы</label>
+    <div id="norm-rules">${rulesRows}</div>
+    <button class="ghost" onclick="addArrayRule()">+ добавить правило массива</button>
+    <label>Бакетизация значений для группировки в отчёте</label>
+    <select id="norm-bucket-preset">
+      <option value="none" ${bucket.preset === "none" ? "selected" : ""}>не бакетизировать</option>
+      <option value="example" ${bucket.preset === "example" ? "selected" : ""}>пресет «как в примере задания»</option>
+      <option value="custom" ${(bucket.rules || []).length ? "selected" : ""}>свои границы</option>
+    </select>
+    <div id="norm-bucket-rules">${bucketRows}</div>
+    <button class="ghost" onclick="addBucketRule()">+ добавить границы бакетов</button>
+    <p class="hint">Правила массива: режим «по полю» — элемент опознаётся значением ключей (через запятую);
+    «по значению» — массив скаляров; «по индексу» — вектор модели, позиция значима.
+    Границы бакетов: числа через запятую, интервалы вида (нижняя - верхняя] строятся автоматически.</p>
+  </details>`;
+}
+
+function arrayRuleRow(i, r) {
+  r = r || {};
+  return `<div class="norm-rule" data-i="${i}">
+    <input class="nr-path" placeholder="путь массива, напр. decisionResult.product_trials" value="${esc(r.path || "")}" size="42">
+    <select class="nr-mode">
+      <option value="field" ${r.mode === "field" ? "selected" : ""}>по полю</option>
+      <option value="value" ${r.mode === "value" ? "selected" : ""}>по значению</option>
+      <option value="index" ${r.mode === "index" ? "selected" : ""}>по индексу</option>
+    </select>
+    <input class="nr-keys" placeholder="ключи через запятую" value="${esc((r.keys || []).join(","))}" size="24">
+    <button class="ghost icon" title="удалить" onclick="this.parentElement.remove()">✕</button>
+  </div>`;
+}
+
+function addArrayRule() {
+  const box = document.getElementById("norm-rules");
+  box.insertAdjacentHTML("beforeend", arrayRuleRow(box.children.length, {}));
+}
+
+function bucketRuleRow(i, r) {
+  r = r || {};
+  return `<div class="norm-bucket" data-i="${i}">
+    <input class="br-path" placeholder="префикс пути, напр. decisionResult.available_offers" value="${esc(r.path_prefix || "")}" size="36">
+    <input class="br-edges" placeholder="границы через запятую: 50000,100000,250000" value="${esc((r.edges || []).join(","))}" size="30">
+    <button class="ghost icon" title="удалить" onclick="this.parentElement.remove()">✕</button>
+  </div>`;
+}
+
+function addBucketRule() {
+  const box = document.getElementById("norm-bucket-rules");
+  box.insertAdjacentHTML("beforeend", bucketRuleRow(box.children.length, {}));
+}
+
+function collectNormalization() {
+  const exclude = document.getElementById("norm-exclude").value.split("\n")
+    .map(s => s.trim()).filter(Boolean);
+  const array_rules = [...document.querySelectorAll("#norm-rules .norm-rule")].map(row => ({
+    path: row.querySelector(".nr-path").value.trim(),
+    mode: row.querySelector(".nr-mode").value,
+    keys: row.querySelector(".nr-keys").value.split(",").map(s => s.trim()).filter(Boolean),
+  })).filter(r => r.path);
+  const preset = document.getElementById("norm-bucket-preset").value;
+  const brules = [...document.querySelectorAll("#norm-bucket-rules .norm-bucket")].map(row => ({
+    path_prefix: row.querySelector(".br-path").value.trim(),
+    edges: row.querySelector(".br-edges").value.split(",").map(s => Number(s.trim())).filter(x => !isNaN(x)),
+  })).filter(r => r.path_prefix && r.edges.length);
+  const norm = {};
+  if (exclude.length) norm.exclude = exclude;
+  if (array_rules.length) norm.array_rules = array_rules;
+  if (preset !== "none" || brules.length) norm.bucket = { preset, rules: brules };
+  return norm;
+}
 
 async function renderRuns() {
   $view.innerHTML = "<p>Загрузка…</p>";
-  let runs = [], datasets = [], builtins = [];
+  let runs = [], datasets = [], builtins = [], configs = [];
   try {
     [ { runs }, { datasets }, { checks: builtins } ] = await Promise.all([
       api("/api/runs"), api("/api/datasets"), api("/api/builtin/checks"),
     ]);
     ({ configured: LLM_CONFIGURED } = await api("/api/llm/config"));
+    ({ configs } = await api("/api/configs"));
   } catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
 
   const dsOpts = datasets.map(d => {
     const label = d.id.startsWith("demo://")
       ? "Демо-данные — 300 заявок, работает без файлов (для разработки)"
-      : `Выданный датасет — ${d.apps} заявок (требуется модуль pipeline)`;
+      : `Выданный датасет — ${d.apps} заявок`;
     return `<option value="${esc(d.id)}">${esc(label)}</option>`;
   }).join("");
 
@@ -213,6 +360,14 @@ async function renderRuns() {
           ${esc(b.label)}
         </label>
         <div class="check-desc">${esc(CHECK_DESCRIPTIONS[(b.file || "").replace(/^check_|\.py$/g, "")] || "")}</div>
+        <div class="check-src">
+          <select class="chk-src" data-file="${esc(b.file)}" onchange="chkSrcChanged('${esc(b.file)}')">
+            <option value="builtin">встроенная</option>
+            <option value="workspace">рабочая область</option>
+            <option value="file">файл .py</option>
+          </select>
+          <input class="chk-name" data-file="${esc(b.file)}" placeholder="имя / путь" style="display:none" size="18">
+        </div>
         <div class="check-params">${paramsFields(b.file, b.params)}</div>
       </div>
     </div>`).join("");
@@ -229,12 +384,9 @@ async function renderRuns() {
       <input id="run-name" value="прогон ${new Date().toLocaleString("ru")}" size="40">
       <label>Данные для сравнения</label>
       <select id="run-dataset">${dsOpts}</select>
-      <label>Процедуры обработки — сейчас встроенные; свои можно писать во вкладке «Рабочая область»</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <select class="proc" title="нормализация ответов в базовый формат"><option>нормализация: встроенная</option></select>
-        <select class="proc" title="сопоставление срезов"><option>сравнение: встроенное</option></select>
-        <select class="proc" title="подготовка фактов для отчёта"><option>факты: встроенные</option></select>
-      </div>
+      <label>Последовательность процедур — порядок этапов обработки</label>
+      <div id="proc-list">${procPanelHtml()}</div>
+      ${normSettingsHtml()}
       <label>Автоматические проверки — каждая ищет свой класс проблем</label>
       <div>${checkOpts}</div>
       <label style="display:flex;gap:6px;align-items:center">
@@ -248,24 +400,86 @@ async function renderRuns() {
       </div>
       <p class="hint">Прогон идёт в фоне и не блокирует страницу: ход виден на странице прогона, можно закрыть вкладку.</p>
     </div>
-    <div class="card">
-      <h3 style="margin-top:0">Ваши прогоны</h3>
-      ${runs.length ? `<div class="twrap"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
-        ${runs.map(r => `<tr>
-          <td><a href="#/runs/${r.id}">${esc(r.config.name)}</a></td>
-          <td>${statusBadge(r.status)}</td>
-          <td>${new Date(r.created * 1000).toLocaleString("ru")}</td></tr>`).join("")}
-      </tbody></table></div>` : emptyState("Пока нет прогонов", "Создайте первый слева и нажмите «Запустить прогон».")}
-      ${runs.length >= 2 ? `
-      <div class="toolbar" style="margin-top:12px">
-        <div><label>Сравнить прогоны</label>
-          <select id="cmp-a">${runs.map(r => `<option value="${r.id}">${esc(r.config.name)}</option>`).join("")}</select>
-          <select id="cmp-b">${runs.map((r, i) => `<option value="${r.id}" ${i === 1 ? "selected" : ""}>${esc(r.config.name)}</option>`).join("")}</select>
-        </div>
-        <button class="ghost" onclick="compareRuns()">сравнить</button>
-      </div>` : ""}
+    <div>
+      <div class="card">
+        <h3 style="margin-top:0">Сохранённые конфигурации</h3>
+        ${configs.length ? `<div class="twrap"><table><thead><tr><th>Название</th><th>действия</th></tr></thead><tbody>
+          ${configs.map(c => `<tr>
+            <td>${esc(c.name)}</td>
+            <td style="white-space:nowrap">
+              <a onclick='loadConfigIntoForm(${JSON.stringify(c).replace(/'/g, "&#39;")})' title="подставить настройки в форму слева">загрузить</a> ·
+              <a onclick='runConfig(${JSON.stringify(c).replace(/'/g, "&#39;")})' title="запустить сразу">запустить</a> ·
+              <a onclick='deleteConfig("${esc(c.name)}")' title="удалить">удалить</a>
+            </td></tr>`).join("")}
+        </tbody></table></div>` : emptyState("Нет сохранённых конфигураций", "Настройте прогон слева и нажмите «Сохранить конфигурацию».")}
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Ваши прогоны</h3>
+        ${runs.length ? `<div class="twrap"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
+          ${runs.map(r => `<tr>
+            <td><a href="#/runs/${r.id}">${esc(r.config.name)}</a></td>
+            <td>${statusBadge(r.status)}</td>
+            <td>${new Date(r.created * 1000).toLocaleString("ru")}</td></tr>`).join("")}
+        </tbody></table></div>` : emptyState("Пока нет прогонов", "Создайте первый слева и нажмите «Запустить прогон».")}
+        ${runs.length >= 2 ? `
+        <div class="toolbar" style="margin-top:12px">
+          <div><label>Сравнить прогоны</label>
+            <select id="cmp-a">${runs.map(r => `<option value="${r.id}">${esc(r.config.name)}</option>`).join("")}</select>
+            <select id="cmp-b">${runs.map((r, i) => `<option value="${r.id}" ${i === 1 ? "selected" : ""}>${esc(r.config.name)}</option>`).join("")}</select>
+          </div>
+          <button class="ghost" onclick="compareRuns()">сравнить</button>
+        </div>` : ""}
+      </div>
     </div>
   </div>`;
+}
+
+function chkSrcChanged(file) {
+  const sel = document.querySelector(`.chk-src[data-file="${CSS.escape(file)}"]`);
+  const inp = document.querySelector(`.chk-name[data-file="${CSS.escape(file)}"]`);
+  inp.style.display = sel.value === "builtin" ? "none" : "";
+}
+
+function loadConfigIntoForm(cfg) {
+  formState.stage_order = cfg.stage_order || formState.stage_order;
+  formState.procs = {
+    normalize: cfg.normalize || { kind: "builtin", name: "default" },
+    compare: cfg.compare || { kind: "builtin", name: "default" },
+    facts: cfg.facts || { kind: "builtin", name: "default" },
+  };
+  formState.normalization = cfg.normalization || {};
+  document.getElementById("run-name").value = cfg.name || "";
+  document.getElementById("run-dataset").value = cfg.dataset || "demo://synthetic";
+  document.getElementById("proc-list").innerHTML = procPanelHtml();
+  const det = document.querySelector(".norm-settings");
+  if (det) { det.outerHTML = normSettingsHtml(); }
+  if (Array.isArray(cfg.checks)) {
+    const wanted = new Map(cfg.checks.map(c => [c.source?.kind === "builtin" ? c.source.name : "", c]));
+    document.querySelectorAll(".chk").forEach(chk => {
+      const spec = wanted.get(chk.value);
+      chk.checked = spec ? spec.enabled !== false : false;
+    });
+    cfg.checks.forEach(c => {
+      if (c.source?.kind === "builtin") {
+        document.querySelectorAll(`.chk-param[data-file="${CSS.escape(c.source.name)}"]`)
+          .forEach(inp => { if (c.params && inp.dataset.key in c.params) inp.value = c.params[inp.dataset.key]; });
+      }
+    });
+  }
+  toast("Конфигурация «" + cfg.name + "» загружена в форму");
+}
+
+async function deleteConfig(name) {
+  await api(`/api/configs/${encodeURIComponent(name)}`, { method: "DELETE" });
+  toast("Конфигурация «" + name + "» удалена");
+  renderRuns();
+}
+
+async function runConfig(cfg) {
+  try {
+    const { run } = await api("/api/runs", { method: "POST", body: JSON.stringify({ ...cfg, name: cfg.name + " (запуск)" }) });
+    location.hash = `#/runs/${run.id}`;
+  } catch (e) { toast("Ошибка: " + e.message, true); }
 }
 
 async function compareRuns() {
@@ -311,16 +525,33 @@ async function createRun(saveOnly, presetConfig) {
             const num = Number(raw);
             params[inp.dataset.key] = raw !== "" && !isNaN(num) ? num : raw;
           });
-        return { source: { kind: "builtin", name: c.value }, params, enabled: true };
+        const srcSel = document.querySelector(`.chk-src[data-file="${CSS.escape(c.value)}"]`);
+        const nameInp = document.querySelector(`.chk-name[data-file="${CSS.escape(c.value)}"]`);
+        const kind = srcSel ? srcSel.value : "builtin";
+        return { source: { kind, name: kind === "builtin" ? c.value : (nameInp?.value.trim() || "") },
+                 params, enabled: true };
       });
     cfg = {
       name: document.getElementById("run-name").value,
       dataset: document.getElementById("run-dataset").value,
-      normalize: { kind: "builtin", name: "default" },
-      compare: { kind: "builtin", name: "default" },
-      facts: { kind: "builtin", name: "default" },
+      stage_order: [...formState.stage_order.filter(s => PROC_STAGES.includes(s)),
+                    ...(formState.stage_order.includes("checks") ? ["checks"] : [])],
+      normalize: { ...formState.procs.normalize },
+      compare: { ...formState.procs.compare },
+      facts: { ...formState.procs.facts },
+      normalization: collectNormalization(),
       checks, llm_opinion: document.getElementById("run-llm").checked,
     };
+    // синхронизируем formState с тем, что реально в инпутах
+    document.querySelectorAll(".proc-src").forEach(sel => {
+      const inp = document.querySelector(`.proc-name[data-stage="${sel.dataset.stage}"]`);
+      cfg.procs && 0;
+      formState.procs[sel.dataset.stage] =
+        { kind: sel.value, name: sel.value === "builtin" ? "default" : (inp?.value.trim() || "") };
+    });
+    cfg.normalize = { ...formState.procs.normalize };
+    cfg.compare = { ...formState.procs.compare };
+    cfg.facts = { ...formState.procs.facts };
   }
   try {
     if (saveOnly) { await api("/api/configs", { method: "POST", body: JSON.stringify(cfg) });
@@ -351,16 +582,20 @@ async function renderRun(id, tab = "pivot") {
   catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
 
   if (run.status === "running" || run.status === "pending") {
+    const done = run.stages.filter(s => s.status === "done").length;
+    const pct = Math.round(done / run.stages.length * 100);
     $view.innerHTML = `
       <div class="card">
         <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}</h3>
-        <p class="hint">Этапы обработки — по завершении появится ссылка на отчёт:</p>
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+        <p class="hint">Этапы обработки (${done} из ${run.stages.length}) — по завершении появится ссылка на отчёт:</p>
         ${run.stages.map(s => `
           <div class="stage">
             ${stageIcon(s.name)}
             <span class="st">${statusBadge(s.status)}</span>
             <b>${esc(s.title)}</b>
             <span class="msg">${esc(s.message || (s.status === "running" ? "выполняется…" : ""))}</span>
+            <span class="hint">${esc(fmtDur(s.started, s.finished))}</span>
             ${s.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполняется на этом этапе" onclick='showCode(${JSON.stringify(s.title)}, ${JSON.stringify(s.code_snapshot || s.code_ref)})'>показать код этапа</button>` : ""}
           </div>`).join("")}
         <div class="skeleton" style="width:70%"></div>
@@ -373,6 +608,7 @@ async function renderRun(id, tab = "pivot") {
 
   const s = run.summary || {};
   const share = s.total_apps ? (s.apps_with_diffs || 0) / s.total_apps : 0;
+  const doneStages = run.stages.filter(x => x.status === "done" || x.status === "skipped").length;
   const cards = `
     <div class="cards">
       <div class="stat"><div class="num" data-n="${s.total_apps ?? 0}">0</div><div class="lbl">заявок в прогоне</div></div>
@@ -390,18 +626,23 @@ async function renderRun(id, tab = "pivot") {
       <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}
         <span class="hint">· ${esc(run.config.dataset)}</span></h3>
       ${run.error ? `<pre class="code">${esc(run.error)}</pre>` : cards}
-      <p class="hint">Этапы обработки:</p>
+      <div class="toolbar" id="seg-bar" style="margin-top:6px">
+        <div><label>Фильтры разрезов заявки — применяются и к сводной, и к спискам</label>
+          <div class="chips" id="seg-chips"></div></div>
+      </div>
+      <p class="hint">Этапы обработки (${doneStages} из ${run.stages.length}):</p>
       ${run.stages.map(sg => `
         <div class="stage">${stageIcon(sg.name)}<span class="st">${statusBadge(sg.status)}</span>
           <b>${esc(sg.title)}</b><span class="msg">${esc(sg.message)}</span>
-          <button class="ghost" style="margin-left:auto" title="показать код, который исполнялся на этом этапе" onclick='showCode(${JSON.stringify(sg.title)}, ${JSON.stringify(sg.code_snapshot || sg.code_ref || "")})'>показать код этапа</button>
-        </div>`).join("")}
+          <span class="hint">${esc(fmtDur(sg.started, sg.finished))}</span>
+          ${sg.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполнялся на этом этапе" onclick='showCode(${JSON.stringify(sg.title)}, ${JSON.stringify(sg.code_snapshot || sg.code_ref || "")})'>показать код этапа</button>` : ""}
+        </div>${sg.error ? `<div class="warn" style="margin:2px 0 6px 34px">${esc(sg.error)}</div>` : ""}`).join("")}
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:end">
         <a href="/api/runs/${id}/checks/export.html" target="_blank"><button class="ghost">открыть отчёт проверок в новой вкладке</button></a>
         <a href="/api/runs/${id}/checks/export.html" download="checks-${id}.html"><button class="ghost">скачать отчёт проверок (HTML)</button></a>
         <button class="ghost" onclick="navigator.clipboard.writeText(location.origin + '/#/runs/${id}').then(()=>toast('Ссылка на сводный отчёт скопирована'))">скопировать ссылку на сводный отчёт</button>
         <button class="ghost" onclick='createRun(false, ${JSON.stringify(run.config).replace(/'/g, "&#39;")})' title="запустить ещё раз с тем же набором проверок и параметров">повторить прогон</button>
-        <div style="margin-left:auto"><label style="margin:0">найти заявку по ID — введите и нажмите Enter (<kbd>/</kbd>)</label>
+        <div style="margin-left:auto"><label style="margin:0">найти заявку по ID — Enter (<kbd>/</kbd>)</label>
           <input id="quick-search" placeholder="I32554354" onkeydown="if(event.key==='Enter')quickFind('${id}')"></div>
       </div>
     </div>
@@ -414,7 +655,7 @@ async function renderRun(id, tab = "pivot") {
 
   document.querySelectorAll(".stat .num[data-n]").forEach(el => animateNum(el, +el.dataset.n));
 
-  if (run.status === "done") { renderBrief(id, run); renderMatrix(id); }
+  if (run.status === "done") { renderBrief(id, run); renderMatrix(id); renderSegFilters(id); }
   if (tab === "pivot") renderPivot(id);
   else if (tab === "checks") renderChecks(id, run);
   else renderLlm(id, run);
@@ -434,6 +675,43 @@ async function quickFind(runId) {
   catch (e) { toast("Заявка не найдена: " + appId, true); }
 }
 
+// ---------- фильтры разрезов ----------
+
+let segFilters = {};      // активные фильтры {product: ..., ...}
+let segOptions = {};      // допустимые значения
+
+async function renderSegFilters(id) {
+  const box = document.getElementById("seg-chips");
+  if (!box) return;
+  try { segOptions = await api(`/api/runs/${id}/segment_values`); } catch (_) { segOptions = {}; }
+  const defs = [["product", "продукт"], ["partner", "партнёр"], ["routing", "маршрутизация"],
+                ["pd_model", "целевая модель"], ["cutoff", "порог"]];
+  box.innerHTML = defs.map(([k, ru]) => {
+    const opts = segOptions[k] || [];
+    if (!opts.length) return "";
+    return `<select class="seg-filter" data-k="${k}" title="фильтр: ${ru}">
+      <option value="">${ru}: все</option>
+      ${opts.map(v => `<option ${segFilters[k] === v ? "selected" : ""}>${esc(v)}</option>`).join("")}
+    </select>`;
+  }).join("") + (Object.keys(segFilters).length
+    ? `<button class="ghost icon" title="сбросить фильтры" onclick="clearSegFilters('${id}')">сбросить</button>`
+    : "");
+  box.querySelectorAll(".seg-filter").forEach(sel => sel.onchange = () => {
+    if (sel.value) segFilters[sel.dataset.k] = sel.value;
+    else delete segFilters[sel.dataset.k];
+    renderPivot(id); // пересчёт сводной с новыми фильтрами
+  });
+}
+
+function clearSegFilters(id) {
+  segFilters = {};
+  renderSegFilters(id).then(() => renderPivot(id));
+}
+
+function segParams() {
+  return new URLSearchParams(Object.entries(segFilters)).toString();
+}
+
 // ---------- «главное за 10 секунд» ----------
 
 async function renderBrief(id, run) {
@@ -450,7 +728,8 @@ async function renderBrief(id, run) {
   const d = apprA - apprB;
   if (d !== 0) lines.push(`Одобрений стало ${d > 0 ? "больше" : "меньше"} на <b>${Math.abs(d)}</b> (${apprB} → ${apprA}).`);
   try {
-    const top = await api(`/api/runs/${id}/facts?dims=path&diff_flag=1&limit=3`);
+    const qs = segParams();
+    const top = await api(`/api/runs/${id}/facts?dims=path&diff_flag=1&limit=3${qs ? "&" + qs : ""}`);
     if (top.rows.length)
       lines.push(`Топ-${top.rows.length} изменившихся атрибутов: <b>${top.rows.map(r => esc(r.dims.path)).join("</b>, <b>")}</b>.`);
   } catch (_) {}
@@ -471,7 +750,7 @@ async function renderBrief(id, run) {
     navigator.clipboard.writeText(text).then(() => toast("Скопировано"));
 }
 
-// ---------- матрица переходов решений ----------
+// ---------- матрица переходов ----------
 
 async function renderMatrix(id) {
   const slot = document.getElementById("matrix-slot");
@@ -515,14 +794,15 @@ async function renderPivot(id) {
   try { ({ dims: DIMS_LIST } = await api("/api/facts/dims")); } catch (_) {}
   el.innerHTML = `
     <div class="card">
-      <p class="hint">Сводная таблица отвечает на вопрос «где именно изменилось». Раскладку меняете вы:
-      выберите измерения строк — каждая ячейка покажет число заявок. Цвет ячейки — насыщенность розового
-      тем выше, чем больше заявок.</p>
+      <p class="hint">Сводная считает <b>число заявок</b> (COUNT DISTINCT APP_ID), у которых есть атрибут,
+      попадающий в группу по всем выбранным измерениям. Измерение «срез» — на какой стороне существует атрибут;
+      «бакет» — значение после бакетизации на выбранном срезе; «хвост пути» — промежуточные сегменты пути.
+      Клик по ячейке открывает ровно этих заявок. Цвет — насыщенность розового тем выше, чем больше заявок.</p>
       <div class="toolbar">
         <div><label>Группировать строки по (порядок чипов = порядок строк)</label>
           <div class="chips" id="pv-dim-chips"></div></div>
         <div><label>Колонки таблицы</label>
-          <select id="pv-cols"><option value="">— нет —</option><option value="change_type">тип изменения</option><option value="diff_flag">есть различие?</option><option value="key">имя атрибута</option><option value="prefix">префикс пути</option><option value="class">класс пути</option><option value="value_after">значение после</option></select></div>
+          <select id="pv-cols"><option value="">— нет —</option><option value="change_type">тип изменения</option><option value="diff_flag">есть различие?</option><option value="key">имя атрибута</option><option value="prefix">префикс пути</option><option value="class">класс пути</option><option value="suffix">хвост пути</option><option value="source">срез</option><option value="bucket">бакет</option><option value="value_after">значение после</option></select></div>
         <div><label>Только изменения типа</label>
           <select id="pv-ct"><option value="">все типы</option><option value="VALUE_CHANGED">значение изменилось</option><option value="ATTRIBUTE_NEW">атрибут появился</option><option value="ATTRIBUTE_LOST">атрибут исчез</option><option value="SAME">без изменений</option></select></div>
         <div><label>Показывать</label>
@@ -532,8 +812,8 @@ async function renderPivot(id) {
         <button class="ghost" id="pv-csv" style="display:none" onclick="exportPivotCsv()">скачать сводную (CSV)</button>
       </div>
       <div id="pv-table" class="hint"></div>
-      <p class="hint">Клик по ячейке — список заявок этой группы, оттуда клик по заявке — её атрибуты до и после.
-      Клик по заголовку колонки — сортировка.</p>
+      <p class="hint">Клик по заголовку колонки — сортировка. Клик по ячейке — список заявок этой группы,
+      оттуда клик по заявке — её атрибуты до и после.</p>
     </div>`;
   renderDimChips();
   await loadPivot(id);  // автоприменение раскладки по умолчанию
@@ -544,7 +824,7 @@ function renderDimChips() {
   if (!box) return;
   box.innerHTML = DIMS_LIST.map(d =>
     `<span class="chip ${pivotRowDims.includes(d) ? "" : "off"}" data-dim="${esc(d)}"
-       title="${esc(d)}">${pivotRowDims.includes(d) ? (pivotRowDims.indexOf(d) + 1) + ". " : ""}${esc(d)}</span>`).join("");
+       title="${esc(DIM_RU[d] || d)}">${pivotRowDims.includes(d) ? (pivotRowDims.indexOf(d) + 1) + ". " : ""}${esc(d)}</span>`).join("");
   box.querySelectorAll(".chip").forEach(ch => ch.onclick = () => {
     const d = ch.dataset.dim;
     if (pivotRowDims.includes(d)) {
@@ -566,12 +846,13 @@ async function loadPivot(id) {
   if (df !== "-1") params.set("diff_flag", df);
   const pf = document.getElementById("pv-prefix").value.trim();
   if (pf) params.set("path_prefix", pf);
+  for (const [k, v] of Object.entries(segFilters)) params.set(k, v);
   box.innerHTML = `<div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:80%"></div>`;
   let data;
   try { data = await api(`/api/runs/${id}/facts?${params}`); }
   catch (e) { box.textContent = "Ошибка: " + e.message; return; }
   if (!data.rows.length) { lastPivot = null; document.getElementById("pv-csv").style.display = "none";
-    box.innerHTML = emptyState("Нет данных по такому фильтру", "Смягчите условия или смените раскладку."); return; }
+    box.innerHTML = emptyState("Нет данных по такому фильтру", "Смягчите условия, смените раскладку или сбросьте фильтры разрезов."); return; }
 
   const rowDims = [...pivotRowDims];
   const groups = new Map();
@@ -586,14 +867,13 @@ async function loadPivot(id) {
   const cols = [...colKeys];
   const maxVal = Math.max(...data.rows.map(r => r.cnt_apps), 1);
   const filterOf = cell => {
-    const f = {};
+    const f = { ...segFilters };
     if (ct) f.change_type = ct;
     if (df !== "-1") f.diff_flag = df;
     if (pf) f.path_prefix = pf;
     Object.assign(f, cell.dims);
     return f;
   };
-  // итоги по колонкам и строкам
   const colTotals = {}, rowTotals = [];
   let grand = 0;
   for (const g of groups.values()) {
@@ -605,24 +885,25 @@ async function loadPivot(id) {
     const a = 0.06 + 0.44 * (v / maxVal);
     return `background: rgba(232, 62, 140, ${a.toFixed(3)});`;
   };
+  const colTitle = c => colDim === "change_type" ? ctRu(c) : (DIM_RU[colDim] || colDim);
   lastPivot = { rowDims, colDim, cols, groups: [...groups.values()], colTotals, rowTotals, grand };
 
   let sortState = null;
   const renderTable = () => {
-    const order = [...groups.keys()];
+    const keys = [...groups.keys()];
     if (sortState) {
       const [colIdx, dir] = sortState;
-      order.sort((x, y) => {
+      keys.sort((x, y) => {
         const gx = groups.get(x), gy = groups.get(y);
-        const vx = colIdx < 0 ? (rowTotals[order.indexOf(x)] ?? 0) : (gx.cells[cols[colIdx]]?.cnt_apps || 0);
-        const vy = colIdx < 0 ? (rowTotals[order.indexOf(y)] ?? 0) : (gy.cells[cols[colIdx]]?.cnt_apps || 0);
+        const vx = colIdx < 0 ? rowTotals[keys.indexOf(x)] ?? 0 : gx.cells[cols[colIdx]]?.cnt_apps || 0;
+        const vy = colIdx < 0 ? rowTotals[keys.indexOf(y)] ?? 0 : gy.cells[cols[colIdx]]?.cnt_apps || 0;
         return (vx - vy) * dir;
       });
     }
-    let html = `<div class="twrap"><table class="pivot"><thead><tr><th>${rowDims.join("</th><th>")}</th>` +
-      cols.map((c, i) => `<th class="sortable" data-ci="${i}" title="сортировать по колонке">${colDim === "change_type" ? esc(ctRu(c)) : esc(c)}</th>`).join("") +
+    let html = `<div class="twrap"><table class="pivot"><thead><tr><th>${rowDims.map(d => esc(DIM_RU[d] || d)).join("</th><th>")}</th>` +
+      cols.map((c, i) => `<th class="sortable" data-ci="${i}" title="сортировать по колонке">${esc(colTitle(c))}</th>`).join("") +
       `<th class="sortable" data-ci="-1" title="сортировать по итогу строки">итого</th></tr></thead><tbody>`;
-    order.forEach((rk, ri) => {
+    keys.forEach((rk, ri) => {
       const g = groups.get(rk);
       html += `<tr>${g.dims.map(d => `<td>${esc(d)}</td>`).join("")}` +
         cols.map(c => {
@@ -647,7 +928,8 @@ async function loadPivot(id) {
 function exportPivotCsv() {
   if (!lastPivot) return;
   const { rowDims, colDim, cols, groups, colTotals, rowTotals, grand } = lastPivot;
-  const head = [...rowDims, ...cols.map(c => colDim === "change_type" ? ctRu(c) : c), "итого"];
+  const head = [...rowDims.map(d => DIM_RU[d] || d),
+                ...cols.map(c => colDim === "change_type" ? ctRu(c) : (DIM_RU[colDim] || colDim)), "итого"];
   const lines = [head.join(";")];
   groups.forEach((g, i) => {
     lines.push([...g.dims, ...cols.map(c => g.cells[c]?.cnt_apps || 0), rowTotals[i]].join(";"));
@@ -667,7 +949,7 @@ async function showApps(id, filters, offset = 0) {
   for (const [k, v] of Object.entries(filters)) if (v !== "") params.set(k, v);
   const data = await api(`/api/runs/${id}/apps?${params}`);
   const filterText = Object.entries(filters).filter(([, v]) => v !== "")
-    .map(([k, v]) => `${k} = ${k === "change_type" ? ctRu(v) : v}`).join(" · ") || "без фильтра";
+    .map(([k, v]) => `${DIM_RU[k] || k} = ${k === "change_type" ? ctRu(v) : v}`).join(" · ") || "без фильтра";
   openModal(`Заявки группы (всего ${data.total})`, `
     <p class="hint">Условие группы: ${esc(filterText)}</p>
     ${data.app_ids.map(a => `<a style="display:inline-block;margin:2px 8px" onclick="showApp('${id}','${esc(a)}')">${esc(a)}</a>`).join("") || "<p>пусто</p>"}
@@ -699,7 +981,11 @@ const checksState = { onlyFail: false, hideLow: false };
 async function renderChecks(id, run) {
   const el = document.getElementById("tab-body");
   const rows = run.check_rows || [];
-  if (!rows.length) { el.innerHTML = `<div class="card">${emptyState("Проверки не выполнялись", "Выберите проверки при создании прогона.")}</div>`; return; }
+  const diags = run.errors || [];
+  if (!rows.length && !diags.length) {
+    el.innerHTML = `<div class="card">${emptyState("Проверки не выполнялись", "Выберите проверки при создании прогона.")}</div>`;
+    return;
+  }
   const nPass = rows.filter(r => r.RESULT === "PASS").length;
   const nFail = rows.filter(r => r.RESULT === "FAIL").length;
   const nLow = rows.filter(r => r.CONFIDENCE === "LOW").length;
@@ -721,19 +1007,21 @@ async function renderChecks(id, run) {
       <span class="counter pass">в норме: ${nPass}</span>
       <span class="counter low ${checksState.hideLow ? "on" : ""}" onclick="toggleHideLow()" title="скрыть строки с низкой уверенностью">низкая уверенность: ${nLow}</span>
     </div>
-    <div class="twrap"><table><thead><tr>${cols.map(([k, ru]) => `<th title="${k}">${ru}</th>`).join("")}<th>заявки</th></tr></thead>
+    ${diags.length ? `<div class="warn">Проверки с ошибками исполнения: ${diags.length}.
+      ${diags.map(d => `<br>• <b>${esc(d.check)}</b> (${esc(d.status || "ERROR")}): <code>${esc(JSON.stringify(d.error))}</code>`).join("")}
+      <br>Проверьте контракт CHECK и код процедуры.</div>` : ""}
+    ${view.length ? `<div class="twrap"><table><thead><tr>${cols.map(([k, ru]) => `<th title="${k}">${ru}</th>`).join("")}<th>заявки</th></tr></thead>
     <tbody>${view.map(({ r }) => `
       <tr class="${r.RESULT === "FAIL" ? "fail" + (r.CONFIDENCE === "LOW" ? " low" : "") : ""}">
         ${cols.map(([k]) => {
           if (k === "RESULT") return `<td title="${esc(r[k])}">${r[k] === "FAIL" ? "проблема" : "в норме"}</td>`;
           if (k === "CONFIDENCE") return `<td title="${esc(r[k])}">${r[k] === "LOW" ? "низкая" : "высокая"}</td>`;
           if (k === "SOURCE") return `<td title="${esc(r[k])}">${r[k] === "AFTER" ? "бета" : "прод"}</td>`;
-          if (k === "CHANGE_TYPE") return `<td title="${esc(r[k])}">${esc(ctRu(r[k]))}</td>`;
           return `<td>${esc(fmtMetric(r[k]))}</td>`;
         }).join("")}
         <td class="clickable">${(r.APP_IDS || []).length ? esc(r.APP_IDS.length) + " шт." : "—"}</td>
       </tr>`).join("")}
-    </tbody></table></div>
+    </tbody></table></div>` : emptyState("Нет строк по текущим фильтрам", "Снимите фильтры счётчиков выше.")}
   </div>`;
   el.querySelectorAll("td.clickable").forEach((td, j) => td.onclick = () => {
     const ids = view[j].r.APP_IDS || [];
@@ -783,11 +1071,13 @@ async function renderWorkspace() {
   el.innerHTML = `
     <div class="card">
       <h3 style="margin-top:0">Рабочая область — свои процедуры и проверки на Python</h3>
-      <p class="hint">Код — обычный Python-файл по контракту: объект <code>CHECK = {"id", "label", "params", "entrypoint"}</code>,
+      <p class="hint">Проверка — файл по контракту: объект <code>CHECK = {"id", "label", "params", "entrypoint"}</code>,
       функция <code>run(mart, params)</code> возвращает строки отчёта. Через <code>mart</code> доступна витрина:
       <code>mart.rows(path=…, change_type=…)</code>, <code>mart.count(...)</code>, <code>mart.app_ids(...)</code>,
-      <code>mart.segments()</code>, <code>mart.total_apps()</code>. Проверку можно сохранить, выбрать в конфигурации прогона
-      или сразу применить к готовому прогону — строки попадут в его отчёт.</p>
+      <code>mart.segments()</code>, <code>mart.total_apps()</code>.<br>
+      Процедура этапа — файл с функцией <code>normalize</code> / <code>compare</code> / <code>facts</code>
+      (или общей <code>run</code>): её можно выбрать в форме прогона вместо встроенной.
+      Сохранённые файлы можно выбрать в конфигурации прогона или применить к готовому прогону.</p>
       <div class="toolbar">
         <div><label>Имя файла (латиница, без пробелов)</label><input id="ws-name" list="ws-files" placeholder="my_check">
           <datalist id="ws-files">${files.map(f => `<option value="${esc(f.name)}">`).join("")}</datalist></div>

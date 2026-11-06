@@ -5,16 +5,18 @@
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import checks as checks_mod
 from . import config, llm as llm_mod, workspace
 from .export_html import render_checks_html
-from .facts import DIMS, apps_in_group, fact_rows
+from .facts import DIMS, SEG_FILTERS, apps_in_group, change_type_ru, fact_rows
+from .mart import DuckMart
 from .models import CheckSpec, ProcedureSource, RunConfig
 from .runs import RunManager
 
@@ -115,52 +117,69 @@ def get_run(run_id: str) -> dict[str, Any]:
 
 # ---------- факты / drill-down ----------
 
+def _filters_from(request: Request) -> dict[str, Any]:
+    """Все query-параметры, кроме служебных (dims, offset, limit) — как фильтры.
+    Поддерживаются фильтры ячеек (path, source, bucket, value, suffix, …)
+    и разрезов заявки (product, partner, routing, pd_model, cutoff)."""
+    skip = {"dims", "offset", "limit"}
+    filters: dict[str, Any] = {}
+    for k, v in request.query_params.items():
+        if k in skip or v == "":
+            continue
+        filters[k] = int(v) if k == "diff_flag" else v
+    return filters
+
+
 @app.get("/api/runs/{run_id}/facts")
-def facts(run_id: str, dims: str = Query(default="path,change_type"),
-          path_prefix: str = "", change_type: str = "", diff_flag: int = -1,
-          key: str = "", limit: int = 5000) -> dict[str, Any]:
+def facts(run_id: str, request: Request,
+          dims: str = Query(default="path,change_type"),
+          limit: int = 5000) -> dict[str, Any]:
     mart = manager.open_mart(run_id)
     try:
-        filters: dict[str, Any] = {}
-        if path_prefix:
-            filters["path_prefix"] = path_prefix
-        if change_type:
-            filters["change_type"] = change_type
-        if diff_flag >= 0:
-            filters["diff_flag"] = diff_flag
-        if key:
-            filters["key"] = key
         rows = fact_rows(mart, [d.strip() for d in dims.split(",") if d.strip()],
-                         filters, limit)
+                         _filters_from(request), limit)
         return {"rows": rows}
     finally:
         mart.close()
 
 
 @app.get("/api/runs/{run_id}/apps")
-def apps(run_id: str, path: str = "", path_prefix: str = "", change_type: str = "",
-         diff_flag: int = -1, key: str = "", array_key: str = "",
-         value_after: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
+def apps(run_id: str, request: Request, offset: int = 0, limit: int = 200) -> dict[str, Any]:
     mart = manager.open_mart(run_id)
     try:
-        f: dict[str, Any] = {}
-        if path:
-            f["path"] = path
-        if path_prefix:
-            f["path_prefix"] = path_prefix
-        if change_type:
-            f["change_type"] = change_type
-        if diff_flag >= 0:
-            f["diff_flag"] = diff_flag
-        if key:
-            f["key"] = key
-        if array_key:
-            f["array_key"] = array_key
-        if value_after:
-            f["value_after"] = value_after
-        return apps_in_group(mart, {}, f, offset, limit)
+        return apps_in_group(mart, {}, _filters_from(request), offset, limit)
     finally:
         mart.close()
+
+
+@app.get("/api/runs/{run_id}/segment_values")
+def segment_values(run_id: str) -> dict[str, Any]:
+    """Допустимые значения фильтров разрезов — для выпадающих списков."""
+    mart = manager.open_mart(run_id)
+    try:
+        segs = list(mart.segments())
+    finally:
+        mart.close()
+    products, partners, routings, models, cutoffs = set(), set(), set(), set(), set()
+    for s in segs:
+        for blob, target, extra in (
+            ("PRODUCTS", products, (s.get("TOP_OFFER_BEFORE"), s.get("TOP_OFFER_AFTER"))),
+            ("PARTNER_TYPE", partners, ()),
+            ("ROUTING_METHOD", routings, ()),
+        ):
+            for piece in (s.get(blob) or "").replace(",", ";").split(";"):
+                if piece.strip():
+                    target.add(piece.strip())
+            for v in extra:
+                if v:
+                    target.add(v)
+        for k, target in (("PD_MODEL_BEFORE", models), ("PD_MODEL_AFTER", models),
+                          ("CUTOFF_BEFORE", cutoffs), ("CUTOFF_AFTER", cutoffs)):
+            if s.get(k):
+                target.add(s[k])
+    return {"product": sorted(products), "partner": sorted(partners),
+            "routing": sorted(routings), "pd_model": sorted(models),
+            "cutoff": sorted(cutoffs)}
 
 
 @app.get("/api/runs/{run_id}/apps/{app_id}")
@@ -210,7 +229,9 @@ def try_check(run_id: str, body: dict[str, Any],
     """Проверка «на лету»: код из workspace/тела — сразу против витрины прогона.
 
     Сценарий демо: написали новую проверку в приложении → применили →
-    она попала в тот же отчёт.
+    она попала в тот же отчёт. Если доступен стек подписки 2 (DuckDB),
+    исполнение идёт через изолированный процесс CheckRunner; иначе — во
+    встроенном исполнителе с валидацией контракта.
     """
     mart = manager.open_mart(run_id)
     try:
@@ -221,8 +242,21 @@ def try_check(run_id: str, body: dict[str, Any],
         else:
             code = body.get("code", "")
             ref = "inline"
-        check = checks_mod.load_check_from_code(code, ref)
+        check = checks_mod.load_check_from_code(code, ref)  # валидация контракта CHECK
         params = {**check.get("params", {}), **body.get("params", {})}
+        if isinstance(mart, DuckMart):
+            from checkrunner import CheckRunner, CheckSpec as RunnerSpec
+            runner = CheckRunner(backend="subprocess", trusted=True, timeout=60)
+            report = runner.run(store=mart._ensure_store(), run_id=DuckMart.RUN_ID,
+                                checks=[RunnerSpec(code=code, name=ref)])
+            ex = report["executions"][0]
+            if ex["status"] != "COMPLETED":
+                diag = ex.get("diagnostic") or {}
+                raise HTTPException(400, f"проверка не выполнилась ({ex['status']}): "
+                                         f"{diag.get('message', json.dumps(diag, ensure_ascii=False))}")
+            rows = [dict(r, _check_id=ex.get("check_id", "?"), _ref=ref)
+                    for r in report["rows"]]
+            return {"rows": rows, "check_id": ex.get("check_id")}
         rows = [dict(r, _check_id=check.get("id", "?"), _ref=ref)
                 for r in (check["entrypoint"](mart, params) or [])]
         return {"rows": rows, "check_id": check.get("id")}
@@ -243,9 +277,11 @@ def add_check_result(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/runs/{run_id}/checks/export.html", response_class=HTMLResponse)
-def export_checks(run_id: str) -> HTMLResponse:
+def export_checks(run_id: str, request: Request) -> HTMLResponse:
     run = manager.load(run_id).model_dump()
-    url = f"http://localhost:8000/#/runs/{run_id}"
+    # ссылка обратно строится от фактического адреса развёртывания
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/#/runs/{run_id}"
     resp = HTMLResponse(render_checks_html(run, url))
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     return resp

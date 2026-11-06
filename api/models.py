@@ -31,9 +31,15 @@ class RunConfig(BaseModel):
     name: str = "прогон"
     user: str = "anon"
     dataset: str  # путь к папке прогона либо demo://synthetic
+    # последовательность этапов: normalize, compare, facts, checks (, llm)
+    stage_order: list[str] = Field(
+        default_factory=lambda: ["normalize", "compare", "facts", "checks", "llm"])
     normalize: ProcedureSource = Field(default_factory=ProcedureSource)
     compare: ProcedureSource = Field(default_factory=ProcedureSource)
     facts: ProcedureSource = Field(default_factory=ProcedureSource)
+    # настройки нормализации (контракт pipeline.Config): exclude, array_rules,
+    # aliases, bucket {preset: none|example, rules: [{path_prefix, edges: []}]}
+    normalization: dict[str, Any] = Field(default_factory=dict)
     checks: list[CheckSpec] = Field(default_factory=list)
     llm_opinion: bool = True
 
@@ -47,6 +53,7 @@ class Stage(BaseModel):
     started: Optional[float] = None
     finished: Optional[float] = None
     message: str = ""
+    error: str = ""  # краткая диагностика при status=error
     # откуда взят код этапа и его снапшот — из журнала можно провалиться в код
     code_ref: str = ""
     code_snapshot: str = ""
@@ -68,6 +75,7 @@ class Run(BaseModel):
     stages: list[Stage] = Field(default_factory=list)
     summary: Optional[RunSummary] = None
     check_rows: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)  # диагностика проверок
     llm: Optional[dict[str, Any]] = None
     error: str = ""
 
