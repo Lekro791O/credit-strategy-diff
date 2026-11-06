@@ -18,6 +18,7 @@ CHANGE_TYPES = ["SAME", "VALUE_CHANGED", "ATTRIBUTE_NEW", "ATTRIBUTE_LOST"]
 class ProcedureSource(BaseModel):
     """Источник пользовательской процедуры: встроенная / рабочая область / файл."""
     kind: Literal["builtin", "workspace", "file"] = "builtin"
+    settings: dict[str, Any] | None = None  # JSON normalization settings v1
     name: str = "default"  # имя встроенной или файла в workspace / на диске
 
 
@@ -30,6 +31,7 @@ class CheckSpec(BaseModel):
 class RunConfig(BaseModel):
     name: str = "прогон"
     user: str = "anon"
+    expected_app_ids: list[str] | None = None
     dataset: str  # путь к папке прогона либо demo://synthetic
     normalize: ProcedureSource = Field(default_factory=ProcedureSource)
     compare: ProcedureSource = Field(default_factory=ProcedureSource)
@@ -70,6 +72,10 @@ class Run(BaseModel):
     check_rows: list[dict[str, Any]] = Field(default_factory=list)
     llm: Optional[dict[str, Any]] = None
     error: str = ""
+    quality: dict[str, Any] = Field(default_factory=dict)
+    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
+    fact_rows: list[dict[str, Any]] = Field(default_factory=list)
+    segment_details: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ---------- факты и drill-down ----------
@@ -92,3 +98,12 @@ class AppRow(BaseModel):
     ADJUSTED_AFTER: str = ""
     DIFF_FLAG: int = 0
     CHANGE_TYPE: str = "SAME"
+
+
+class PivotRequest(BaseModel):
+    dimensions: list[str] = Field(default_factory=lambda: ['path', 'change_type'])
+    filters: dict[str, Any] = Field(default_factory=dict)
+    segment_filters: dict[str, Any] = Field(default_factory=dict)
+    column_dimension: str | None = None
+    limit: int = Field(default=5000, ge=1, le=10000)
+    offset: int = Field(default=0, ge=0)

@@ -7,15 +7,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import checks as checks_mod
 from . import config, llm as llm_mod, workspace
 from .export_html import render_checks_html
-from .facts import DIMS, apps_in_group, fact_rows
-from .models import CheckSpec, ProcedureSource, RunConfig
+from .facts import DIMS, apps_in_group, fact_rows, fact_result
+from .models import CheckSpec, ProcedureSource, RunConfig, PivotRequest
 from .runs import RunManager
 
 app = FastAPI(title="Система анализа изменений СПР", version="0.1.0")
@@ -62,6 +62,23 @@ def fact_dims() -> dict[str, Any]:
     return {"dims": sorted(DIMS)}
 
 
+@app.get('/api/normalization/schema')
+def normalization_schema():
+    import json
+    import pipeline
+    from pathlib import Path
+    return json.loads((Path(pipeline.__file__).parent/'normalization.schema.json').read_text())
+
+
+@app.get('/api/normalization/defaults')
+def normalization_defaults():
+    from pipeline import default_config
+    cfg = default_config()
+    return {'version': 1, 'exclude': list(cfg.exclude),
+            'arrays': {path: {'mode': rule.mode, 'keys': list(rule.keys)} for path, rule in cfg.arrays.items()},
+            'buckets': {}}
+
+
 # ---------- конфигурации ----------
 
 @app.get("/api/configs")
@@ -88,6 +105,11 @@ def del_config(name: str, x_user_id: str | None = Header(default=None)) -> dict[
 def create_run(cfg: RunConfig,
                x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
     cfg.user = _user(x_user_id)
+    from pipeline import config_from_settings
+    try:
+        config_from_settings(cfg.normalize.settings)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     if not cfg.checks:
         # разумный дефолт: все выданные проверки
         cfg.checks = [CheckSpec(
@@ -118,7 +140,7 @@ def get_run(run_id: str) -> dict[str, Any]:
 @app.get("/api/runs/{run_id}/facts")
 def facts(run_id: str, dims: str = Query(default="path,change_type"),
           path_prefix: str = "", change_type: str = "", diff_flag: int = -1,
-          key: str = "", limit: int = 5000) -> dict[str, Any]:
+          key: str = "", limit: int = 5000, column_dimension: str | None = None) -> dict[str, Any]:
     mart = manager.open_mart(run_id)
     try:
         filters: dict[str, Any] = {}
@@ -130,37 +152,72 @@ def facts(run_id: str, dims: str = Query(default="path,change_type"),
             filters["diff_flag"] = diff_flag
         if key:
             filters["key"] = key
-        rows = fact_rows(mart, [d.strip() for d in dims.split(",") if d.strip()],
-                         filters, limit)
-        return {"rows": rows}
+        run = manager.load(run_id)
+        custom_facts = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
+        return fact_result(mart, [d.strip() for d in dims.split(',') if d.strip()],
+                           filters, limit=limit, column_dimension=column_dimension,
+                           segment_rows=run.segment_details, fact_scope=run.fact_rows if custom_facts else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     finally:
         mart.close()
 
 
 @app.get("/api/runs/{run_id}/apps")
-def apps(run_id: str, path: str = "", path_prefix: str = "", change_type: str = "",
-         diff_flag: int = -1, key: str = "", array_key: str = "",
-         value_after: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
+def apps(run_id: str, request: Request, offset: int = 0, limit: int = 200):
+    filters = dict(request.query_params)
+    filters.pop('offset', None); filters.pop('limit', None)
+    if 'diff_flag' in filters:
+        filters['diff_flag'] = int(filters['diff_flag'])
+        if filters['diff_flag'] == -1:
+            filters.pop('diff_flag')
+    run = manager.load(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
     mart = manager.open_mart(run_id)
     try:
-        f: dict[str, Any] = {}
-        if path:
-            f["path"] = path
-        if path_prefix:
-            f["path_prefix"] = path_prefix
-        if change_type:
-            f["change_type"] = change_type
-        if diff_flag >= 0:
-            f["diff_flag"] = diff_flag
-        if key:
-            f["key"] = key
-        if array_key:
-            f["array_key"] = array_key
-        if value_after:
-            f["value_after"] = value_after
-        return apps_in_group(mart, {}, f, offset, limit)
+        return apps_in_group(mart, {}, filters, offset, limit,
+                             segment_rows=run.segment_details, fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     finally:
         mart.close()
+
+
+@app.post('/api/runs/{run_id}/pivot')
+def pivot(run_id: str, body: PivotRequest):
+    run = manager.load(run_id)
+    mart = manager.open_mart(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
+    try:
+        return fact_result(mart, body.dimensions, body.filters,
+                           segment_filters=body.segment_filters, segment_rows=run.segment_details,
+                           column_dimension=body.column_dimension, limit=body.limit, offset=body.offset,
+                           fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    finally:
+        mart.close()
+
+
+@app.post('/api/runs/{run_id}/pivot/apps')
+def pivot_apps(run_id: str, body: PivotRequest):
+    run = manager.load(run_id)
+    mart = manager.open_mart(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
+    try:
+        return apps_in_group(mart, {}, body.filters, body.offset, body.limit,
+                             segment_filters=body.segment_filters, segment_rows=run.segment_details,
+                             fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    finally:
+        mart.close()
+
+
+@app.get('/api/runs/{run_id}/quality')
+def run_quality(run_id: str):
+    run = manager.load(run_id)
+    return {'quality': run.quality, 'diagnostics': run.diagnostics}
 
 
 @app.get("/api/runs/{run_id}/apps/{app_id}")

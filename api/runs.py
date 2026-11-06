@@ -144,38 +144,28 @@ class RunManager:
         if mart_path.exists():
             mart_path.unlink()
 
-        # --- этап 1+2: нормализация и сравнение (подписка 1) ---
-        rows, segments, ref, snapshot = self._build_mart(cfg)
+        # The pipeline emits stage events while each procedure is actually running.
+        def pipeline_event(event):
+            stage = event['stage']
+            current = self.load(run_id)
+            if event['status'] == 'start':
+                self._stage_begin(current, stage, event.get('code_ref', 'pipeline:' + stage), event.get('code_snapshot', ''))
+            elif event['status'] == 'finish':
+                if stage == 'facts':
+                    message = f"Подготовлено групп фактов: {event.get('facts', 0)}"
+                else:
+                    message = f"Корректных пар: {event.get('eligible', 0)}"
+                self._stage_end(current, stage, message)
+        result = self._build_dataset(cfg, event=pipeline_event)
+        rows, segments = result['comparison'], result['segments']
+        run = self.load(run_id)
+        run.quality, run.diagnostics = result['quality'], result['diagnostics']
+        run.fact_rows, run.segment_details = result['facts'], segments
+        self.save(run)
         mart = self._make_mart(run_id)
         mart.load(rows, segments)
         (config.RUNS_DIR / f"{run_id}.backend").write_text(
             "duck" if isinstance(mart, DuckMart) else "sqlite")
-        backend = "DuckDB (подписка 2)" if isinstance(mart, DuckMart) \
-            else "SQLite (встроенный)"
-        self._stage_begin(run, "normalize", ref, snapshot)
-        self._stage_end(run, "normalize",
-                        f"{len(rows)} строк витрины, {len(segments)} заявок · {backend}")
-
-        run = self.load(run_id)
-        self._stage_begin(run, "compare", ref, snapshot)
-        same = mart.conn.execute(
-            "SELECT COUNT(*) FROM mart WHERE CHANGE_TYPE = 'SAME'").fetchone()[0]
-        self._stage_end(run, "compare",
-                        f"{same} совпадающих строк, "
-                        f"{len(rows) - same} с различиями")
-
-        # --- этап 3: факты (демонстрация агрегатов; сводная считает по запросу) ---
-        run = self.load(run_id)
-        self._stage_begin(run, "facts", "api/facts.py", "")
-        top = fact_rows(mart, ["path", "change_type"], {"diff_flag": 1}, limit=5)
-        if top:
-            d = top[0]["dims"]
-            self._stage_end(run, "facts",
-                            f"чаще всего меняется {d.get('path', '—')} "
-                            f"({change_type_ru(d.get('change_type', ''))}), "
-                            f"{top[0]['cnt_apps']} заявок")
-        else:
-            self._stage_end(run, "facts", "различий не найдено")
 
         # --- этап 4: проверки ---
         run = self.load(run_id)
@@ -221,23 +211,28 @@ class RunManager:
                 st.finished = time.time()
                 self.save(run)
 
-    def _build_mart(self, cfg: RunConfig) -> tuple[list[dict], list[dict], str, str]:
-        """Витрина: из pipeline (подписка 1), если доступен, иначе демо."""
-        if cfg.dataset.startswith("demo://"):
-            return (*build_demo(), "builtin:api/demo_data.py",
-                    "Синтетический датасет: pipeline ещё не подключён")
-        try:  # ожидаемый интерфейс подписки 1
-            from pipeline import build_mart  # type: ignore
-            rows, segments = build_mart(
-                cfg.dataset,
-                cfg.normalize.model_dump(), cfg.compare.model_dump())
-            return rows, segments, "pipeline:build_mart", ""
-        except ImportError:
-            raise RuntimeError(
-                "pipeline/ ещё не готов, а датасет не demo:// — "
-                "выберите демо-датасет или дождитесь подписки 1")
-        except Exception:
-            raise
+    def _build_dataset(self, cfg, event=None):
+        from pipeline import build_dataset
+        from .procedures import resolve_procedure
+        def resolver(spec, stage, default):
+            return resolve_procedure(spec, stage, default, user=cfg.user,
+                                     settings=cfg.normalize.settings)
+        def process(path):
+            return build_dataset(path, cfg.normalize.model_dump(), cfg.compare.model_dump(),
+                                 cfg.facts.model_dump(), event=event, resolver=resolver,
+                                 expected_app_ids=cfg.expected_app_ids)
+        if not cfg.dataset.startswith('demo://'):
+            return process(cfg.dataset)
+        # Demo is a real JSON input to the same eligibility/normalization pipeline.
+        import tempfile
+        from .demo_data import demo_documents
+        with tempfile.TemporaryDirectory(dir=config.DATA_DIR, prefix='demo-input-') as name:
+            root = Path(name)
+            (root/'BEFORE').mkdir(); (root/'AFTER').mkdir()
+            for app_id, before, after in demo_documents():
+                for source, document in [('BEFORE', before), ('AFTER', after)]:
+                    (root/source/(app_id+'.json')).write_text(json.dumps(document), encoding='utf-8')
+            return process(root)
 
     # ---------- доступ к витрине готового прогона ----------
 
@@ -270,10 +265,12 @@ class RunManager:
         runner = CheckRunner(backend="subprocess", trusted=True, timeout=120)
         report = runner.run(store=mart._ensure_store(), run_id=DuckMart.RUN_ID,
                             checks=specs)
-        id_by_label = {e.get("label"): e.get("check_id")
-                       for e in report["executions"] if e.get("check_id")}
-        rows = [dict(r, _check_id=id_by_label.get(r.get("LABEL"), "?"),
-                     _ref=e) for r in report["rows"]]
+        rows = []
+        for execution in report['executions']:
+            start, count = execution.get('row_start', 0), execution.get('row_count', 0)
+            rows.extend(dict(row, _check_id=execution.get('check_id', '?'),
+                             _ref=execution.get('origin', ''))
+                        for row in report['rows'][start:start+count])
         errors = [e for e in report["executions"] if e["status"] != "COMPLETED"]
         return rows, errors, "изолированный процесс (checkrunner/)"
 
