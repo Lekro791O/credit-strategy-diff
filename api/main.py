@@ -174,6 +174,29 @@ def app_detail(run_id: str, app_id: str) -> dict[str, Any]:
         mart.close()
 
 
+@app.get("/api/runs/{run_id}/decision_matrix")
+def decision_matrix(run_id: str) -> dict[str, Any]:
+    """Матрица переходов решений BEFORE → AFTER (2×2) с заявками в ячейках."""
+    mart = manager.open_mart(run_id)
+    try:
+        where = f" WHERE {mart.run_clause}" if mart.run_clause else ""
+        rows = mart.query(
+            "SELECT APP_ID, DECISION_BEFORE, DECISION_AFTER FROM segments" + where)
+        cells: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            key = f"{r.get('DECISION_BEFORE') or '?'}→{r.get('DECISION_AFTER') or '?'}"
+            cell = cells.setdefault(key, {"before": r.get("DECISION_BEFORE") or "?",
+                                          "after": r.get("DECISION_AFTER") or "?",
+                                          "cnt": 0, "app_ids": []})
+            cell["cnt"] += 1
+            if len(cell["app_ids"]) < 500:
+                cell["app_ids"].append(r["APP_ID"])
+        total = sum(c["cnt"] for c in cells.values())
+        return {"cells": cells, "total": total}
+    finally:
+        mart.close()
+
+
 # ---------- проверки ----------
 
 @app.get("/api/runs/{run_id}/checks")
@@ -229,6 +252,13 @@ def export_checks(run_id: str) -> HTMLResponse:
 
 
 # ---------- ИИ-мнение ----------
+
+@app.get("/api/llm/config")
+def llm_config() -> dict[str, Any]:
+    """Настроена ли модель — чтобы UI честно показывал, будет ли шаг ИИ."""
+    from . import config as app_config
+    return {"configured": app_config.llm_configured()}
+
 
 @app.post("/api/runs/{run_id}/llm")
 def llm_opinion(run_id: str) -> dict[str, Any]:

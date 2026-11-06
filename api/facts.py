@@ -13,8 +13,21 @@ from __future__ import annotations
 from typing import Any
 
 # измерения, доступные в сводной (значение -> колонка витрины)
-DIMS: dict[str, str] = {
-    "prefix": "PREFIX",
+# человекочитаемые подписи типов изменения (в т.ч. алиасы из примеров)
+CHANGE_TYPE_RU = {
+    "SAME": "без изменений",
+    "VALUE_CHANGED": "значение изменено",
+    "ATTRIBUTE_NEW": "атрибут появился",
+    "ATTRIBUTE_LOST": "атрибут исчез",
+    "ADDED": "атрибут появился",
+    "REMOVED": "атрибут исчез",
+}
+
+def change_type_ru(value: str) -> str:
+    return CHANGE_TYPE_RU.get(value, value)
+
+
+DIMS: dict[str, str] = {    "prefix": "PREFIX",
     "class": "CLASS",
     "key": "\"KEY\"",
     "path": "PATH",

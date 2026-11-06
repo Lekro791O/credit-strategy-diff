@@ -43,7 +43,7 @@ class RunConfig(BaseModel):
 class Stage(BaseModel):
     name: str
     title: str = ""
-    status: Literal["pending", "running", "done", "error"] = "pending"
+    status: Literal["pending", "running", "done", "error", "skipped"] = "pending"
     started: Optional[float] = None
     finished: Optional[float] = None
     message: str = ""

@@ -25,7 +25,7 @@ from typing import Any
 from . import checks as checks_mod
 from . import config, llm as llm_mod, workspace
 from .demo_data import build_demo
-from .facts import fact_rows
+from .facts import change_type_ru, fact_rows
 from .mart import DuckMart, SQLiteMart
 from .models import Run, RunConfig, RunSummary, Stage
 
@@ -167,10 +167,15 @@ class RunManager:
         # --- этап 3: факты (демонстрация агрегатов; сводная считает по запросу) ---
         run = self.load(run_id)
         self._stage_begin(run, "facts", "api/facts.py", "")
-        top = fact_rows(mart, ["path", "change_type"], limit=5)
-        self._stage_end(run, "facts",
-                        f"топ-группа: {top[0]['dims'] if top else '—'} "
-                        f"({top[0]['cnt_apps'] if top else 0} заявок)")
+        top = fact_rows(mart, ["path", "change_type"], {"diff_flag": 1}, limit=5)
+        if top:
+            d = top[0]["dims"]
+            self._stage_end(run, "facts",
+                            f"чаще всего меняется {d.get('path', '—')} "
+                            f"({change_type_ru(d.get('change_type', ''))}), "
+                            f"{top[0]['cnt_apps']} заявок")
+        else:
+            self._stage_end(run, "facts", "различий не найдено")
 
         # --- этап 4: проверки ---
         run = self.load(run_id)
@@ -206,7 +211,15 @@ class RunManager:
             mart2.close()
             run = self.load(run_id)
             run.llm = opinion
-            self._stage_end(run, "llm", opinion.get("status", "?"))
+            if opinion.get("status") == "ok":
+                self._stage_end(run, "llm", f"модель {opinion.get('model', '?')} ответила")
+            else:
+                st = next(s for s in run.stages if s.name == "llm")
+                st.status = "skipped"
+                st.message = ("модель не настроена — задайте CSD_LLM_API_KEY, "
+                              "CSD_LLM_BASE_URL и CSD_LLM_MODEL (см. README)")
+                st.finished = time.time()
+                self.save(run)
 
     def _build_mart(self, cfg: RunConfig) -> tuple[list[dict], list[dict], str, str]:
         """Витрина: из pipeline (подписка 1), если доступен, иначе демо."""

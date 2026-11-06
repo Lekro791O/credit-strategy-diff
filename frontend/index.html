@@ -3,25 +3,45 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Система анализа изменений СПР</title>
+<title>Сравнение решений СПР</title>
+<script>
+// тема до отрисовки, чтобы не мигать
+(function(){var t=localStorage.getItem("csd-theme");if(t)document.documentElement.setAttribute("data-theme",t);})();
+</script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
-  <div class="brand">Сравнение решений СПР</div>
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="2" y="6" width="28" height="20" rx="4" fill="#fff" opacity=".95"/>
+      <rect x="2" y="6" width="28" height="20" rx="4" fill="none" stroke="#ffd6e7" stroke-width="1.5"/>
+      <rect x="6" y="11" width="6" height="5" rx="1.2" fill="#e83e8c"/>
+      <path d="M14 20.5l3 3 6-6.5" fill="none" stroke="#1c9e6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>Сравнение решений СПР</span>
+  </div>
   <nav id="tabs">
     <a href="#/runs" data-tab="runs">Прогоны</a>
     <a href="#/workspace" data-tab="workspace">Рабочая область</a>
   </nav>
   <div class="userbox">
-    <label>пользователь</label>
-    <input id="username" size="10">
+    <button id="theme-toggle" class="ghost icon" title="переключить тему" onclick="toggleTheme()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>
+      </svg>
+    </button>
+    <label for="username">пользователь</label>
+    <input id="username" size="10" autocomplete="off">
   </div>
 </header>
 <main id="view">Загрузка…</main>
+<div id="toasts" aria-live="polite"></div>
 <div id="modal" class="modal hidden"><div class="modal-body">
   <div class="modal-head"><span id="modal-title"></span>
-    <button onclick="closeModal()">✕</button></div>
+    <button class="ghost icon" onclick="closeModal()" title="закрыть (Esc)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button></div>
   <div id="modal-content"></div>
 </div></div>
 <script src="/static/app.js"></script>
