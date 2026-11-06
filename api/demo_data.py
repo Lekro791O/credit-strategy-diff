@@ -52,7 +52,9 @@ def _bucket_amount(v: str) -> str:
     return "(250K+)"
 
 
-def build_demo(n_apps: int = 300, seed: int = 42) -> tuple[list[dict], list[dict]]:
+def build_demo(n_apps: int = 300, seed: int | None = None) -> tuple[list[dict], list[dict]]:
+    # seed=None — случайный набор заявок при каждом прогоне: демо ведёт
+    # себя как живые данные, а не выдаёт один и тот же результат
     rng = random.Random(seed)
     rows, segments = [], []
     for i in range(n_apps):
