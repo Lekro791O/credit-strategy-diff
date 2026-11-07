@@ -446,7 +446,7 @@ async function renderRuns() {
       </div>
       <div class="card">
         <h3 style="margin-top:0">Ваши прогоны</h3>
-        ${runs.length ? `<div class="twrap"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
+        ${runs.length ? `<div class="twrap runs-list"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
           ${runs.map(r => `<tr>
             <td><a href="#/runs/${r.id}">${esc(r.config.name)}</a></td>
             <td>${statusBadge(r.status)}</td>
