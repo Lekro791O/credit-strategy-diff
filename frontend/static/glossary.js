@@ -106,3 +106,22 @@ function prettyKey(key, path = "") {
   if (String(path).includes("rules") && key === "name") return "стоп-фактор";
   return humanizeSeg(key);
 }
+
+/* значения ячеек: решения, булевы, срезы, уверенность, итоги проверок */
+const VALUE_RU = {
+  APPROVE: "одобрено", REJECT: "отклонено", VERIFICATION: "на проверке",
+  TRUE: "да", FALSE: "нет", NULL: "пусто", NONE: "—",
+  "BEFORE (MASTER)": "прод", "AFTER (BETA)": "бета", BEFORE: "прод", AFTER: "бета",
+  HIGH: "высокая", LOW: "низкая", PASS: "в норме", FAIL: "проблема",
+  HARDCHECK: "стоп-фактор", CUTOFF: "порог",
+};
+function valRu(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  return VALUE_RU[v] ?? v;
+}
+
+/* названия выданных проверок — подчистка англицизмов */
+const LABEL_RU = {
+  "Approval Rate по продукту упал": "Одобрение по продукту упало",
+};
+function labelRu(l) { return LABEL_RU[l] ?? (l || "—"); }

@@ -734,14 +734,14 @@ async function renderRun(id, tab = "pivot") {
       <div class="stat"><div class="num" data-n="${s.apps_decision_changed ?? 0}">0</div><div class="lbl">сменили итоговое решение</div></div>
     </div>
     ${share >= 0.95 ? `<div class="warn">Изменились почти все заявки (${(share * 100).toFixed(0)}%). Проверьте, что нормализация не помечает расхождения формата как изменения.</div>` : ""}
-    <div class="hint">Загружено: ${run.quality?.total_apps ?? s.total_apps ?? 0} · допущено: ${run.quality?.eligible_apps ?? s.total_apps ?? 0} · исключено: ${run.quality?.excluded_apps ?? 0}</div>${(run.diagnostics || []).length ? `<details><summary>Причины исключения</summary>${run.diagnostics.map(d => `<div>${esc(d.APP_ID)} · ${esc(d.SOURCE)} · ${esc(d.MESSAGE)}</div>`).join("")}</details>` : ""}<div id="brief-slot"></div>
+    <div class="hint">Загружено: ${run.quality?.total_apps ?? s.total_apps ?? 0} · допущено: ${run.quality?.eligible_apps ?? s.total_apps ?? 0} · исключено: ${run.quality?.excluded_apps ?? 0}</div>${(run.diagnostics || []).length ? `<details><summary>Причины исключения</summary>${run.diagnostics.map(d => `<div>${esc(d.APP_ID)} · ${esc(valRu(d.SOURCE))} · ${esc(d.MESSAGE)}</div>`).join("")}</details>` : ""}<div id="brief-slot"></div>
     <div id="matrix-slot"></div>
     <div id="split-slot"></div>`;
 
   $view.innerHTML = `
     <div class="card">
       <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}
-        <span class="hint">· ${esc(run.config.dataset)}</span></h3>
+        <span class="hint">· ${esc(dsName(run.config.dataset))}</span></h3>
       ${run.error ? `<pre class="code">${esc(run.error)}</pre>` : cards}
       <div class="toolbar" id="seg-bar" style="margin-top:6px">
         <div><label>Фильтры разрезов заявки — применяются и к сводной, и к спискам</label>
@@ -781,7 +781,13 @@ async function renderRun(id, tab = "pivot") {
 
 function fmtObj(o) {
   if (!o) return "—";
-  return Object.entries(o).map(([k, v]) => `${k}: ${v}`).join(", ");
+  return Object.entries(o).map(([k, v]) => `${valRu(k)}: ${v}`).join(", ");
+}
+
+function dsName(ds) {
+  if (!ds) return "—";
+  if (ds === "demo://synthetic") return "демо-данные (300 заявок)";
+  return String(ds).split(/[\\/]/).pop();
 }
 
 function showCode(title, code) { openModal("Код этапа: " + title, `<pre class="code">${esc(code)}</pre>`); }
@@ -849,12 +855,12 @@ async function renderBrief(id, run) {
     const qs = segParams();
     const top = await api(`/api/runs/${id}/facts?dims=path&diff_flag=1&limit=3${qs ? "&" + qs : ""}`);
     if (top.rows.length)
-      lines.push(`Топ-${top.rows.length} изменившихся атрибутов: <b>${top.rows.map(r => esc(r.dims.path)).join("</b>, <b>")}</b>.`);
+      lines.push(`Топ-${top.rows.length} изменившихся атрибутов: <b>${top.rows.map(r => esc(prettyPath(r.dims.path))).join("</b>, <b>")}</b>.`);
   } catch (_) {}
   const fails = (run.check_rows || []).filter(r => r.RESULT === "FAIL");
   if (fails.length) {
     const worst = fails.reduce((a, b) => (b.CNT || 0) > (a.CNT || 0) ? b : a);
-    lines.push(`<span title="FAIL">Проблем</span> по ${fails.length} проверкам; серьёзнее всего: <b>${esc(worst.LABEL)}</b>${worst.ARGUMENT ? ` («${esc(worst.ARGUMENT)}»)` : ""} — ${worst.CNT} заявок.`);
+    lines.push(`<span title="FAIL">Проблем</span> по ${fails.length} проверкам; серьёзнее всего: <b>${esc(labelRu(worst.LABEL))}</b>${worst.ARGUMENT ? ` («${esc(worst.ARGUMENT)}»)` : ""} — ${worst.CNT} заявок.`);
   } else {
     lines.push(`Проверки не выявили проблем — все <span title="PASS">в норме</span>.`);
   }
@@ -1104,7 +1110,7 @@ async function showApps(id, filters, offset = 0) {
   for (const [k, v] of Object.entries(filters)) if (v !== "") params.set(k, v);
   const data = await api(`/api/runs/${id}/apps?${params}`);
   const filterText = Object.entries(filters).filter(([, v]) => v !== "")
-    .map(([k, v]) => `${DIM_RU[k] || k} = ${k === "change_type" ? ctRu(v) : v}`).join(" · ") || "без фильтра";
+    .map(([k, v]) => `${DIM_RU[k] || k} = ${k === "change_type" ? ctRu(v) : k === "path" ? prettyPath(v) : k === "source" ? valRu(v) : v}`).join(" · ") || "без фильтра";
   openModal(`Заявки группы (всего ${data.total})`, `
     <p class="hint">Условие группы: ${esc(filterText)}</p>
     ${data.app_ids.map(a => `<a style="display:inline-block;margin:2px 8px" onclick="showApp('${id}','${esc(a)}')">${esc(a)}</a>`).join("") || "<p>пусто</p>"}
@@ -1119,7 +1125,7 @@ async function showApp(id, appId) {
   const seg = data.segment || {};
   const rows = data.attributes.map(r => `<tr class="${r.DIFF_FLAG ? "fail" : ""}">
       <td title="${esc(r.PATH)}"><b>${esc(prettyKey(r.KEY, r.PATH))}</b><br><span class="hint">${esc(prettyPath(r.PATH))}${r.ARRAY_KEY ? ` · [${esc(r.ARRAY_KEY)}]` : ""}</span></td>
-      <td>${esc(r.VALUE_BEFORE || "—")}</td><td>${esc(r.VALUE_AFTER || "—")}</td>
+      <td>${esc(valRu(r.VALUE_BEFORE))}</td><td>${esc(valRu(r.VALUE_AFTER))}</td>
       <td title="${esc(r.CHANGE_TYPE)}">${esc(ctRu(r.CHANGE_TYPE))}</td></tr>`).join("");
   openModal(`Заявка ${appId}: что изменилось`, `
     <p class="hint">Итоговое решение: ${decisionStamp(seg.DECISION_BEFORE)} → ${decisionStamp(seg.DECISION_AFTER)}
@@ -1172,6 +1178,7 @@ async function renderChecks(id, run) {
     <tbody>${view.map(({ r }) => `
       <tr class="${r.RESULT === "FAIL" ? "fail" + (r.CONFIDENCE === "LOW" ? " low" : "") : ""}">
         ${cols.map(([k]) => {
+          if (k === "LABEL") return `<td title="${esc(r[k])}">${esc(labelRu(r[k]))}</td>`;
           if (k === "RESULT") return `<td title="${esc(r[k])}">${r[k] === "FAIL" ? "проблема" : "в норме"}</td>`;
           if (k === "CONFIDENCE") return `<td title="${esc(r[k])}">${r[k] === "LOW" ? "низкая" : "высокая"}</td>`;
           if (k === "SOURCE") return `<td title="${esc(r[k])}">${r[k] === "AFTER" ? "бета" : "прод"}</td>`;
