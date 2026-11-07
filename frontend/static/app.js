@@ -85,8 +85,10 @@ const DIM_RU = {
 };
 
 const STAGE_TITLES = {
+  prepare: "Подготовка входов",
   normalize: "Нормализация ответов", compare: "Сопоставление срезов",
-  facts: "Подготовка фактов counts", checks: "Автоматические проверки",
+  facts: "Подготовка фактов counts", store: "Сохранение витрины",
+  checks: "Автоматические проверки",
   llm: "Мнение языковой модели",
 };
 const STAGE_STATUS_RU = { pending: "ожидает", running: "в работе", done: "готов",
@@ -126,9 +128,11 @@ const IC = (inner) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="non
   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 
 const STAGE_ICONS = {
+  prepare: IC('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>'),
   normalize: IC('<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>'),
   compare: IC('<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>'),
   facts: IC('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  store: IC('<ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5V12c0 1.6 3.6 2.8 8 2.8s8-1.2 8-2.8V5.5"/><path d="M4 12v6.5c0 1.6 3.6 2.8 8 2.8s8-1.2 8-2.8V12"/>'),
   checks: IC('<path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4.5"/>'),
   llm: IC('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16z"/>'),
 };
