@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NormalizationSettingsV1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "default": 1
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Replaces the default excluded subtree paths"
+    },
+    "arrays": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "enum": [
+              "field",
+              "value",
+              "index"
+            ]
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "field"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "keys"
+              ],
+              "properties": {
+                "keys": {
+                  "minItems": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "keys": {
+                  "maxItems": 0
+                }
+              }
+            }
+          }
+        ]
+      },
+      "description": "Overrides by raw path, without []"
+    },
+    "buckets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lower",
+            "upper",
+            "label"
+          ],
+          "properties": {
+            "lower": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "upper": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "Ordered, nonoverlapping (lower, upper] intervals; null means infinity; gaps keep original value"
+    }
+  }
+}
