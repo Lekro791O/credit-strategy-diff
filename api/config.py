@@ -50,6 +50,13 @@ _load_env_file()
 
 
 def llm_settings() -> dict:
+    import json
+    try:
+        saved = json.loads((DATA_DIR / "gigachat.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if saved.get("key"):
+        return {"provider": "gigachat", "api_key": saved["key"], "model": saved.get("model", "GigaChat"), "scope": saved.get("scope", "GIGACHAT_API_PERS"), "base_url": "https://api.giga.chat/v1"}
     return {
         "base_url": os.environ.get("CSD_LLM_BASE_URL", ""),
         "api_key": os.environ.get("CSD_LLM_API_KEY", ""),

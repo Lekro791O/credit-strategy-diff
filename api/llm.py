@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+import uuid
+import ssl
 from typing import Any
 
 import httpx
@@ -60,10 +62,23 @@ def ask_llm(summary: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
                           "CSD_LLM_API_KEY, CSD_LLM_MODEL (см. README)"}
     s = config.llm_settings()
     try:
-        with httpx.Client(timeout=timeout) as client:
+        options = {"timeout": timeout}
+        certificate = config.DATA_DIR / "gigachat-ca.crt"
+        if s.get("provider") == "gigachat" and certificate.exists():
+            context = ssl.create_default_context()
+            context.load_verify_locations(cafile=str(certificate))
+            options["verify"] = context
+        with httpx.Client(**options) as client:
+            token = s["api_key"]
+            if s.get("provider") == "gigachat":
+                auth = client.post("https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                    headers={"Authorization": "Basic " + token, "RqUID": str(uuid.uuid4())},
+                    data={"scope": s["scope"]})
+                auth.raise_for_status()
+                token = auth.json()["access_token"]
             resp = client.post(
                 f"{s['base_url'].rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {s['api_key']}"},
+                headers={"Authorization": f"Bearer {token}"},
                 json={
                     "model": s["model"],
                     "messages": [
@@ -78,6 +93,8 @@ def ask_llm(summary: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             content = resp.json()["choices"][0]["message"]["content"]
             return {"status": "ok", "model": s["model"], "opinion": content,
                     "summary": summary}
+    except httpx.HTTPStatusError as e:
+        return {"status": "unavailable", "reason": f"GigaChat отклонил запрос (HTTP {e.response.status_code}); проверьте ключ, тип доступа и модель", "summary": summary}
     except Exception as e:
         return {"status": "unavailable",
-                "reason": f"ошибка обращения к модели: {e}", "summary": summary}
+                "reason": f"ошибка обращения к модели ({type(e).__name__}); проверьте ключ, доступ к модели и сертификаты", "summary": summary}

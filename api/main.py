@@ -496,6 +496,28 @@ def llm_config() -> dict[str, Any]:
     return {"configured": app_config.llm_configured()}
 
 
+@app.post("/api/llm/gigachat")
+def save_gigachat(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+    # Credentials configure the local server, not a shared public instance.
+    if not request.client or request.client.host not in ("127.0.0.1", "::1", "testclient"):
+        raise HTTPException(403, "Настройка доступна только с этого компьютера")
+    key = body.get("key", "").strip()
+    scope = body.get("scope", "GIGACHAT_API_PERS")
+    model = body.get("model", "GigaChat").strip()
+    if not key or len(key) > 4096 or any(c.isspace() for c in key) or scope not in ("GIGACHAT_API_PERS", "GIGACHAT_API_B2B", "GIGACHAT_API_CORP") or not model or len(model) > 100:
+        raise HTTPException(422, "Проверьте ключ, тип доступа и название модели")
+    import os, tempfile
+    config.ensure_dirs()
+    fd, temporary = tempfile.mkstemp(prefix=".gigachat-", dir=config.DATA_DIR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"key": key, "scope": scope, "model": model}, f)
+        os.replace(temporary, config.DATA_DIR / "gigachat.json")
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+    return {"configured": True}
+
+
 @app.post("/api/runs/{run_id}/llm")
 def llm_opinion(run_id: str) -> dict[str, Any]:
     run = manager.load(run_id)
