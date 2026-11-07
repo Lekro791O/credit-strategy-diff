@@ -416,9 +416,9 @@ async function renderRuns() {
           ${configs.map(c => `<tr>
             <td>${esc(c.name)}</td>
             <td style="white-space:nowrap">
-              <a onclick='loadConfigIntoForm(${JSON.stringify(c).replace(/'/g, "&#39;")})' title="подставить настройки в форму слева">загрузить</a> ·
-              <a onclick='runConfig(${JSON.stringify(c).replace(/'/g, "&#39;")})' title="запустить сразу">запустить</a> ·
-              <a onclick='deleteConfig("${esc(c.name)}")' title="удалить">удалить</a>
+              <a data-cb="loadConfigIntoForm:${cbArg(c)}" title="подставить настройки в форму слева">загрузить</a> ·
+              <a data-cb="runConfig:${cbArg(c)}" title="запустить сразу">запустить</a> ·
+              <a data-cb="deleteConfig:${cbArg(c.name)}" title="удалить">удалить</a>
             </td></tr>`).join("")}
         </tbody></table></div>` : emptyState("Нет сохранённых конфигураций", "Настройте прогон слева и нажмите «Сохранить конфигурацию».")}
       </div>
@@ -629,6 +629,19 @@ document.addEventListener("click", event => {
   if (stage) showCode(stage.title, stage.code_snapshot || stage.code_ref || "");
 });
 
+// безопасная передача аргументов в клики: никаких строк кода в onclick —
+// только индексы реестра (строки из данных с кавычками/переводами строк
+// больше не ломают кнопки)
+const cbReg = [];
+const cbArg = v => { cbReg.push(v); return cbReg.length - 1; };
+document.addEventListener("click", event => {
+  const el = event.target.closest("[data-cb]");
+  if (!el) return;
+  const [fn, ...idxs] = el.dataset.cb.split(":");
+  const args = idxs.map(i => cbReg[+i]);
+  if (typeof window[fn] === "function") window[fn](...args);
+});
+
 async function renderRun(id, tab = "pivot") {
   let run;
   try { ({ run } = await api(`/api/runs/${id}`)); }
@@ -721,7 +734,7 @@ async function renderRun(id, tab = "pivot") {
         <a href="/api/runs/${id}/checks/export.html" download="checks-${id}.html"><button class="ghost">скачать отчёт проверок (HTML)</button></a>
         <a href="/api/runs/${id}/mart.csv" download="mart-${id}.csv"><button class="ghost" title="витрина сравнения по контракту docs/СХЕМА_ВИТРИНЫ.md — одна строка = атрибут заявки, до/после, признак различия">скачать витрину сравнения (CSV)</button></a>
         <button class="ghost" onclick="navigator.clipboard.writeText(location.origin + '/#/runs/${id}').then(()=>toast('Ссылка на сводный отчёт скопирована'))">скопировать ссылку на сводный отчёт</button>
-        <button class="ghost" onclick='createRun(false, ${JSON.stringify(run.config).replace(/'/g, "&#39;")})' title="запустить ещё раз с тем же набором проверок и параметров">повторить прогон</button>
+        <button class="ghost" data-cb="createRun:${cbArg(false)}:${cbArg(run.config)}" title="запустить ещё раз с тем же набором проверок и параметров">повторить прогон</button>
         <div style="margin-left:auto"><label style="margin:0">найти заявку по ID — Enter (<kbd>/</kbd>)</label>
           <input id="quick-search" placeholder="I32554354" onkeydown="if(event.key==='Enter')quickFind('${id}')"></div>
       </div>
@@ -842,7 +855,7 @@ async function renderMatrix(id) {
     const c = data.cells[`${b}→${a}`];
     const cls = b === a ? "stable" : (b === "APPROVE" && a === "REJECT") ? "flip-bad" : "";
     const pct = data.total ? ((c ? c.cnt : 0) / data.total * 100).toFixed(1) : "0.0";
-    return `<div class="mx-cell ${cls}" ${c && c.cnt ? `onclick='showAppIds("${id}", ${JSON.stringify(c.app_ids)}, "Решение: ${b} → ${a}")'` : ""} title="показать заявки">
+    return `<div class="mx-cell ${cls}" ${c && c.cnt ? `data-cb="showAppIds:${cbArg(id)}:${cbArg(c.app_ids)}:${cbArg(`Решение: ${b} → ${a}`)}"` : ""} title="показать заявки">
       <div class="n">${c ? c.cnt : 0}</div><div class="p">${pct}%</div>
       <div>${decisionStamp(a)}</div></div>`;
   };
@@ -869,7 +882,7 @@ async function renderSourceSplit(id) {
   const total = data.logic.cnt + data.external_only.cnt + data.both.cnt;
   if (!total) { slot.innerHTML = ""; return; }
   const card = (key, title, hint, cls) => `
-    <div class="split-cell ${cls}" ${data[key].cnt ? `onclick='showAppIds("${id}", ${JSON.stringify(data[key].app_ids)}, "${title}")'` : ""} title="показать заявки">
+    <div class="split-cell ${cls}" ${data[key].cnt ? `data-cb="showAppIds:${cbArg(id)}:${cbArg(data[key].app_ids)}:${cbArg(title)}"` : ""} title="показать заявки">
       <div class="n">${data[key].cnt}</div>
       <div class="t">${title}</div>
       <div class="p">${(data[key].cnt / total * 100).toFixed(1)}% · клик — список</div>
@@ -1058,8 +1071,8 @@ async function showApps(id, filters, offset = 0) {
     <p class="hint">Условие группы: ${esc(filterText)}</p>
     ${data.app_ids.map(a => `<a style="display:inline-block;margin:2px 8px" onclick="showApp('${id}','${esc(a)}')">${esc(a)}</a>`).join("") || "<p>пусто</p>"}
     <div style="margin-top:10px">
-      ${offset > 0 ? `<button class="ghost" onclick='showApps("${id}", ${JSON.stringify(filters)}, ${offset - 200})'>← предыдущие 200</button>` : ""}
-      ${offset + 200 < data.total ? `<button class="ghost" onclick='showApps("${id}", ${JSON.stringify(filters)}, ${offset + 200})'>следующие 200 →</button>` : ""}
+      ${offset > 0 ? `<button class="ghost" data-cb="showApps:${cbArg(id)}:${cbArg(filters)}:${cbArg(offset - 200)}">← предыдущие 200</button>` : ""}
+      ${offset + 200 < data.total ? `<button class="ghost" data-cb="showApps:${cbArg(id)}:${cbArg(filters)}:${cbArg(offset + 200)}">следующие 200 →</button>` : ""}
     </div>`);
 }
 
