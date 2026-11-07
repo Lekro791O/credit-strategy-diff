@@ -64,7 +64,9 @@ def ask_llm(summary: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     try:
         options = {"timeout": timeout}
         certificate = config.DATA_DIR / "gigachat-ca.crt"
-        if s.get("provider") == "gigachat" and certificate.exists():
+        if s.get("provider") == "gigachat":
+            if not certificate.exists():
+                certificate = config.REPO_ROOT / "api" / "certs" / "russian_trusted_root_ca.pem"
             context = ssl.create_default_context()
             context.load_verify_locations(cafile=str(certificate))
             options["verify"] = context
