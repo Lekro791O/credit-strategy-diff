@@ -285,7 +285,7 @@ td.soft { background: var(--soft-hl) !important; }   /* малые значен�
 .mx-cell.flip-bad { background: var(--bad-bg); } .mx-cell.flip-bad .n { color: var(--bad); }
 
 /* «логика vs данные» */
-.split-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+.split-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 10px 0; max-width: 760px; }
 .split-cell {
   border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
   background: var(--pink-mist); cursor: pointer; text-align: center;
