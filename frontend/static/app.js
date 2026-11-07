@@ -1055,6 +1055,9 @@ async function loadPivot(id) {
         const pretty = dimName === "path" ? prettyPath(d)
           : dimName === "key" ? prettyKey(d)
           : dimName === "prefix" || dimName === "class" ? (SEG_RU[d] || humanizeSeg(d))
+          : dimName === "change_type" ? ctRu(d)
+          : dimName === "diff_flag" ? (d === "1" || d === 1 ? "да" : "нет")
+          : dimName === "source" ? (d === "BEFORE (MASTER)" ? "прод" : d === "AFTER (BETA)" ? "бета" : d)
           : d;
         return `<td title="${dimName}: ${esc(d)}">${esc(pretty)}</td>`;
       }).join("")}` +
