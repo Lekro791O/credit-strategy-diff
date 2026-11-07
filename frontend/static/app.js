@@ -707,7 +707,17 @@ async function renderRun(id, tab = null) {
   if (!["pivot", "checks", "llm"].includes(tab)) tab = "pivot";
   let run;
   try { ({ run } = await api(`/api/runs/${id}`)); }
-  catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
+  catch (e) {
+    // 404: прогона нет или он принадлежит другой сессии (например, ссылка
+    // из скачанного HTML-отчёта чужого прогона) — не «падение», а подсказка
+    $view.innerHTML = `
+      <div class="crumbs"><a href="#/runs">← Прогоны</a></div>
+      <div class="card">${emptyState("Прогон не найден",
+        "Такого прогона нет, либо он принадлежит другому пользователю этого сервера (у каждого браузера — своя сессия). Скачанный HTML-отчёт открывается в любом браузере, а сводный отчёт приложения доступен для прогонов вашей сессии — запустите свой прогон на странице «Прогоны».")}
+        <div style="text-align:center;margin-top:8px"><a href="#/runs"><button>← к списку прогонов</button></a></div>
+      </div>`;
+    return;
+  }
 
   visibleRunStages = run.stages || [];
   if (run.status === "running" || run.status === "pending") {
