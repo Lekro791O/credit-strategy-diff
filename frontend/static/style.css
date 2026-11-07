@@ -313,6 +313,15 @@ td.soft { background: var(--soft-hl) !important; }   /* малые значен�
 .brief li { margin: 4px 0; }
 
 /* ---------- проверки ---------- */
+/* хлебные крошки: единственный путь «назад» со страницы итогов */
+.crumbs { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; }
+.crumbs a { text-decoration: none; font-weight: 600; }
+.crumbs span { color: var(--muted); }
+.crumbs b { color: var(--ink); }
+
+/* последний открытый прогон в списке */
+.runs-list tr.last-run td { background: var(--pink-soft); }
+
 /* список прогонов: компактный, со скроллом */
 .runs-list { max-height: 300px; overflow-y: auto; }
 .runs-list th, .runs-list td { padding: 5px 10px; font-size: 12px; }

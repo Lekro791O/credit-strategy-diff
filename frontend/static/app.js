@@ -176,7 +176,7 @@ function route() {
   document.querySelectorAll("nav#tabs a").forEach(a =>
     a.classList.toggle("active", h.startsWith(a.getAttribute("href"))));
   const m = h.match(/^#\/runs\/(\w+)(?:\/(\w+))?/);
-  if (m) renderRun(m[1], m[2] === "checks" || m[2] === "llm" ? m[2] : "pivot");
+  if (m) { localStorage.setItem("csd-last-run", m[1]); renderRun(m[1], m[2] === "checks" || m[2] === "llm" ? m[2] : "pivot"); }
   else if (h.startsWith("#/workspace")) renderWorkspace();
   else renderRuns();
 }
@@ -446,12 +446,12 @@ async function renderRuns() {
       </div>
       <div class="card">
         <h3 style="margin-top:0">Ваши прогоны</h3>
-        ${runs.length ? `<div class="twrap runs-list"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
-          ${runs.map(r => `<tr>
+        ${(() => { const last = localStorage.getItem("csd-last-run"); return runs.length ? `<div class="twrap runs-list"><table><thead><tr><th>Название</th><th>Статус</th><th>Создан</th></tr></thead><tbody>
+          ${runs.map(r => `<tr${r.id === last ? ' class="last-run" title="последний открытый прогон"' : ""}>
             <td><a href="#/runs/${r.id}">${esc(r.config.name)}</a></td>
             <td>${statusBadge(r.status)}</td>
             <td>${new Date(r.created * 1000).toLocaleString("ru")}</td></tr>`).join("")}
-        </tbody></table></div>` : emptyState("Пока нет прогонов", "Создайте первый слева и нажмите «Запустить прогон».")}
+        </tbody></table></div>` : emptyState("Пока нет прогонов", "Создайте первый слева и нажмите «Запустить прогон»."); })()}
         ${runs.length >= 2 ? `
         <div class="toolbar" style="margin-top:12px">
           <div><label>Сравнить прогоны</label>
@@ -653,6 +653,12 @@ function animateNum(el, target) {
   requestAnimationFrame(step);
 }
 
+function goTab(id, t) {
+  const h = `#/runs/${id}/${t}`;
+  if (location.hash === h) renderRun(id, t); // hash не изменится — перерисуем сами
+  else location.hash = h;
+}
+
 // ---------- прогон: ход и результаты ----------
 
 let visibleRunStages = [];
@@ -676,7 +682,9 @@ document.addEventListener("click", event => {
   if (typeof window[fn] === "function") window[fn](...args);
 });
 
-async function renderRun(id, tab = "pivot") {
+async function renderRun(id, tab = null) {
+  tab = tab || (location.hash.match(/^#\/runs\/\w+\/(\w+)/)?.[1]) || "pivot";
+  if (!["pivot", "checks", "llm"].includes(tab)) tab = "pivot";
   let run;
   try { ({ run } = await api(`/api/runs/${id}`)); }
   catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
@@ -695,6 +703,7 @@ async function renderRun(id, tab = "pivot") {
     }
     const pct = Math.min(99, Math.round((units + curFrac) / stages.length * 100));
     $view.innerHTML = `
+      <div class="crumbs"><a href="#/runs" title="вернуться к списку прогонов">← Прогоны</a><span>/</span><b>${esc(run.config.name)}</b></div>
       <div class="card run-wrap">
         <div class="run-bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
         <div class="run-inner">
@@ -746,6 +755,7 @@ async function renderRun(id, tab = "pivot") {
     <div id="split-slot"></div>`;
 
   $view.innerHTML = `
+    <div class="crumbs"><a href="#/runs" title="вернуться к списку прогонов">← Прогоны</a><span>/</span><b>${esc(run.config.name)}</b></div>
     <div class="card">
       <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}
         <span class="hint">· ${esc(dsName(run.config.dataset))}</span></h3>
@@ -772,9 +782,9 @@ async function renderRun(id, tab = "pivot") {
       </div>
     </div>
     <section class="tabs">
-      <button class="${tab === "pivot" ? "active" : ""}" onclick="renderRun('${id}','pivot')">Сводная таблица</button>
-      <button class="${tab === "checks" ? "active" : ""}" onclick="renderRun('${id}','checks')">Отчёт проверок</button>
-      <button class="${tab === "llm" ? "active" : ""}" onclick="renderRun('${id}','llm')">Мнение ИИ</button>
+      <button class="${tab === "pivot" ? "active" : ""}" onclick="goTab('${id}','pivot')">Сводная таблица</button>
+      <button class="${tab === "checks" ? "active" : ""}" onclick="goTab('${id}','checks')">Отчёт проверок</button>
+      <button class="${tab === "llm" ? "active" : ""}" onclick="goTab('${id}','llm')">Мнение ИИ</button>
     </section>
     <div id="tab-body">Загрузка…</div>`;
 
