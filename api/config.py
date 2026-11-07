@@ -30,6 +30,25 @@ def ensure_dirs() -> None:
 
 # --- LLM (опционально, см. README) ---
 
+def _load_env_file() -> None:
+    """Локальные настройки (не в Git): data/llm.env, строки KEY=VALUE."""
+    path = DATA_DIR / 'llm.env'
+    if not path.exists():
+        return
+    try:
+        for line in path.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            os.environ.setdefault(key.strip(), value.strip().strip('"\''))
+    except OSError:
+        pass
+
+
+_load_env_file()
+
+
 def llm_settings() -> dict:
     return {
         "base_url": os.environ.get("CSD_LLM_BASE_URL", ""),

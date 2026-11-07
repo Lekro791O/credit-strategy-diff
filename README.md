@@ -83,7 +83,17 @@ docker compose up --build     # http://localhost:8000, data/ проброшен�
 
 ## Настройка ИИ (опционально)
 
-OpenAI-совместимый чат-интерфейс, через переменные окружения:
+OpenAI-совместимый чат-интерфейс. Проще всего — положить ключ в файл
+`data/llm.env` (он в `.gitignore`, в репозиторий не попадёт), сервер
+подхватит его при старте:
+
+```
+CSD_LLM_BASE_URL=https://api.moonshot.ai/v1
+CSD_LLM_API_KEY=sk-...
+CSD_LLM_MODEL=kimi-k2-0711-preview
+```
+
+Либо те же три переменные окружения:
 
 ```bash
 set CSD_LLM_BASE_URL=https://api.moonshot.ai/v1
