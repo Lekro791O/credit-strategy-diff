@@ -123,7 +123,7 @@ kbd {
   padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   border-radius: 4px; font-size: 11px; background: var(--pink-mist);
 }
-.hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; font-weight: 500; }
 .warn {
   background: var(--low-bg); color: var(--low-ink);
   border: 1px solid #ecd9b0; border-radius: 8px; padding: 8px 12px; font-size: 13px;
@@ -190,7 +190,7 @@ kbd {
 .stage .ic { color: var(--pink); display: inline-flex; flex: none; }
 .stage .st { flex: none; }
 .stage b { flex: none; }
-.stage .msg { color: var(--muted); font-size: 12px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.stage .msg { color: var(--muted); font-size: 12.5px; font-weight: 500; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .stage .hint { flex: none; white-space: nowrap; }
 .stage button.ghost { flex: none; white-space: nowrap; }
 
@@ -351,9 +351,9 @@ tr.row-low { opacity: .82; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
   padding: 4px 11px; border-radius: 999px; font-size: 12px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--card); color: var(--muted);
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; letter-spacing: .01em;
 }
-.chip:not(.off) { border-color: var(--pink); color: var(--pink); background: var(--pink-soft); font-weight: 600; }
+.chip:not(.off) { border-color: var(--pink); color: var(--pink); background: var(--pink-soft); font-weight: 700; }
 .tabs { display: flex; gap: 4px; margin: 14px 0 10px; border-bottom: 1px solid var(--line); }
 .tabs button {
   background: none; border: none; border-bottom: 2px solid transparent;
