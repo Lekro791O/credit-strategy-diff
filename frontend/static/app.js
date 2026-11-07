@@ -337,6 +337,17 @@ function collectNormalization() {
   return norm;
 }
 
+document.addEventListener("click", async event => {
+  if (event.target.id !== "giga-save") return;
+  const result = document.getElementById("giga-result");
+  try {
+    await api("/api/llm/gigachat", {method:"POST", body:JSON.stringify({key:document.getElementById("giga-key").value, scope:document.getElementById("giga-scope").value, model:document.getElementById("giga-model").value})});
+    document.getElementById("giga-key").value = "";
+    document.getElementById("run-llm").checked = true;
+    result.textContent = "Настройки сохранены. Доступ проверится при запросе мнения.";
+  } catch (e) { result.textContent = "Не удалось сохранить: " + e.message; }
+});
+
 async function renderRuns() {
   $view.innerHTML = "<p>Загрузка…</p>";
   let runs = [], datasets = [], builtins = [], configs = [];
@@ -403,6 +414,13 @@ async function renderRuns() {
         после прогона запросить «второе мнение» у языковой модели
       </label>
       <div class="hint" style="margin:2px 0 0 24px">${esc(llmHint)}</div>
+      <details style="margin-top:10px"><summary>Подключить GigaChat</summary>
+        <p class="hint">Ключ сохраняется локально на этом компьютере и не отображается повторно. В модель отправляется сводка результатов и проверки.</p>
+        <label>Ключ авторизации</label><input id="giga-key" type="password" autocomplete="off" placeholder="Вставьте ключ авторизации">
+        <label>Тип доступа</label><select id="giga-scope"><option value="GIGACHAT_API_PERS">Личный</option><option value="GIGACHAT_API_B2B">Бизнес</option><option value="GIGACHAT_API_CORP">Корпоративный</option></select>
+        <label>Модель</label><input id="giga-model" value="GigaChat-2">
+        <button type="button" id="giga-save">Сохранить настройки</button><span id="giga-result" class="hint"></span>
+      </details>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="createRun(false)">Запустить прогон</button>
         <button class="ghost" onclick="createRun(true)" title="сохранить настройки, чтобы запускать потом в один клик">Сохранить конфигурацию</button>
@@ -580,7 +598,8 @@ async function createRun(saveOnly, presetConfig) {
       name: document.getElementById("run-name").value,
       dataset: document.getElementById("run-dataset").value,
       stage_order: [...formState.stage_order.filter(s => PROC_STAGES.includes(s)),
-                    ...(formState.stage_order.includes("checks") ? ["checks"] : [])],
+                    ...(formState.stage_order.includes("checks") ? ["checks"] : []),
+                    ...(document.getElementById("run-llm").checked ? ["llm"] : [])],
       normalize: { ...formState.procs.normalize },
       compare: { ...formState.procs.compare },
       facts: { ...formState.procs.facts },
@@ -705,8 +724,6 @@ async function renderRun(id, tab = "pivot") {
       <div class="stat"><div class="num" data-n="${s.total_apps ?? 0}">0</div><div class="lbl">заявок в прогоне</div></div>
       <div class="stat"><div class="num" data-n="${s.apps_with_diffs ?? 0}">0</div><div class="lbl">заявок с изменениями</div></div>
       <div class="stat"><div class="num" data-n="${s.apps_decision_changed ?? 0}">0</div><div class="lbl">сменили итоговое решение</div></div>
-      <div class="stat"><div class="num" style="font-size:15px;display:flex;gap:8px;align-items:center">${decisionStamp("APPROVE")} ${decisionStamp("REJECT")}</div>
-        <div class="lbl">решения: было ${esc(fmtObj(s.decision_before))} → стало ${esc(fmtObj(s.decision_after))}</div></div>
     </div>
     ${share >= 0.95 ? `<div class="warn">Изменились почти все заявки (${(share * 100).toFixed(0)}%). Проверьте, что нормализация не помечает расхождения формата как изменения.</div>` : ""}
     <div class="hint">Загружено: ${run.quality?.total_apps ?? s.total_apps ?? 0} · допущено: ${run.quality?.eligible_apps ?? s.total_apps ?? 0} · исключено: ${run.quality?.excluded_apps ?? 0}</div>${(run.diagnostics || []).length ? `<details><summary>Причины исключения</summary>${run.diagnostics.map(d => `<div>${esc(d.APP_ID)} · ${esc(d.SOURCE)} · ${esc(d.MESSAGE)}</div>`).join("")}</details>` : ""}<div id="brief-slot"></div>
@@ -855,18 +872,20 @@ async function renderMatrix(id) {
     const c = data.cells[`${b}→${a}`];
     const cls = b === a ? "stable" : (b === "APPROVE" && a === "REJECT") ? "flip-bad" : "";
     const pct = data.total ? ((c ? c.cnt : 0) / data.total * 100).toFixed(1) : "0.0";
-    return `<div class="mx-cell ${cls}" ${c && c.cnt ? `data-cb="showAppIds:${cbArg(id)}:${cbArg(c.app_ids)}:${cbArg(`Решение: ${b} → ${a}`)}"` : ""} title="показать заявки">
+    return `<div class="mx-cell ${cls}" style="grid-column:${a === "APPROVE" ? 3 : 4};grid-row:${b === "APPROVE" ? 3 : 4}" ${c && c.cnt ? `data-cb="showAppIds:${cbArg(id)}:${cbArg(c.app_ids)}:${cbArg(`Решение: ${b} → ${a}`)}"` : ""} title="показать заявки">
       <div class="n">${c ? c.cnt : 0}</div><div class="p">${pct}%</div>
       <div>${decisionStamp(a)}</div></div>`;
   };
   slot.innerHTML = `<div class="card"><h3 style="margin-top:0">Куда переехали решения</h3>
     <div class="matrix">
-      <div class="mx-head hidemob">было ↓ / стало →</div>
-      <div class="mx-head">${decisionStamp("APPROVE")}</div>
-      <div class="mx-head">${decisionStamp("REJECT")}</div>
-      <div class="mx-rowhead">${decisionStamp("APPROVE")}</div>
+      <div class="mx-axis-top">СТАЛО</div>
+      <div class="mx-axis-side">БЫЛО</div>
+      <div style="grid-column:2;grid-row:2"></div>
+      <div class="mx-head" style="grid-column:3;grid-row:2">${decisionStamp("APPROVE")}</div>
+      <div class="mx-head" style="grid-column:4;grid-row:2">${decisionStamp("REJECT")}</div>
+      <div class="mx-rowhead" style="grid-column:2;grid-row:3">${decisionStamp("APPROVE")}</div>
       ${cell("APPROVE", "APPROVE")}${cell("APPROVE", "REJECT")}
-      <div class="mx-rowhead">${decisionStamp("REJECT")}</div>
+      <div class="mx-rowhead" style="grid-column:2;grid-row:4">${decisionStamp("REJECT")}</div>
       ${cell("REJECT", "APPROVE")}${cell("REJECT", "REJECT")}
     </div>
     <p class="hint">Клик по ячейке — заявки этой группы. Диагональ — решения не изменились; красная ячейка — одобренные стали отклонёнными (самый опасный случай).</p>
@@ -1004,7 +1023,7 @@ async function loadPivot(id) {
     const a = 0.03 + 0.22 * (v / maxVal);
     return `background: rgba(37, 99, 235, ${a.toFixed(3)});`;
   };
-  const colTitle = c => colDim === "change_type" ? ctRu(c) : (DIM_RU[colDim] || colDim);
+  const colTitle = c => !colDim ? "Итого" : colDim === "change_type" ? ctRu(c) : c;
   lastPivot = { rowDims, colDim, cols, groups: [...groups.values()], colTotals, rowTotals, grand };
 
   let sortState = null;
@@ -1020,8 +1039,7 @@ async function loadPivot(id) {
       });
     }
     let html = `<div class="twrap"><table class="pivot"><thead><tr><th>${rowDims.map(d => esc(DIM_RU[d] || d)).join("</th><th>")}</th>` +
-      cols.map((c, i) => `<th class="sortable" data-ci="${i}" title="сортировать по колонке">${esc(colTitle(c))}</th>`).join("") +
-      `<th class="sortable" data-ci="-1" title="сортировать по итогу строки">итого</th></tr></thead><tbody>`;
+      cols.map((c, i) => `<th class="sortable" data-ci="${i}" title="сортировать по колонке">${esc(colTitle(c))}</th>`).join("") + `</tr></thead><tbody>`;
     keys.forEach((rk, ri) => {
       const g = groups.get(rk);
       html += `<tr>${g.dims.map(d => `<td>${esc(d)}</td>`).join("")}` +
@@ -1029,9 +1047,9 @@ async function loadPivot(id) {
           const cell = g.cells[c];
           if (!cell) return "<td>·</td>";
           return `<td class="clickable" title="показать заявки этой группы" style="${heat(cell.cnt_apps)}" data-f='${esc(JSON.stringify(filterOf(cell)))}'>${cell.cnt_apps}</td>`;
-        }).join("") + `<td style="font-weight:700">${rowTotalMap.get(rk) ?? 0}</td></tr>`;
+        }).join("") + `</tr>`;
     });
-    html += `<tr class="totals"><td>итого</td>${cols.map(c => `<td>${colTotals[c]}</td>`).join("")}<td>${grand}</td></tr>`;
+    html += `<tr class="totals"><td colspan="${rowDims.length}">итого уникальных заявок</td>${cols.map(c => `<td>${colTotals[c]}</td>`).join("")}</tr>`;
     box.innerHTML = (data.rows.length >= data.limit ? `<p class="warn">Показаны первые ${data.limit} групп. Уточните фильтры; CSV содержит показанные группы.</p>` : "") + html + "</tbody></table></div>";
     box.querySelectorAll("td.clickable").forEach(td => td.onclick = () => showApps(id, JSON.parse(td.dataset.f)));
     box.querySelectorAll("th.sortable").forEach(th => th.onclick = () => {
@@ -1048,12 +1066,12 @@ function exportPivotCsv() {
   if (!lastPivot) return;
   const { rowDims, colDim, cols, groups, colTotals, rowTotals, grand } = lastPivot;
   const head = [...rowDims.map(d => DIM_RU[d] || d),
-                ...cols.map(c => colDim === "change_type" ? ctRu(c) : (DIM_RU[colDim] || colDim)), "итого"];
+                ...cols.map(c => !colDim ? "Итого" : colDim === "change_type" ? ctRu(c) : c)];
   const lines = [head.join(";")];
   groups.forEach((g, i) => {
-    lines.push([...g.dims, ...cols.map(c => g.cells[c]?.cnt_apps || 0), rowTotals[i]].join(";"));
+    lines.push([...g.dims, ...cols.map(c => g.cells[c]?.cnt_apps || 0)].join(";"));
   });
-  lines.push(["итого", ...cols.map(c => colTotals[c]), grand].join(";"));
+  lines.push(["итого уникальных заявок", ...Array(Math.max(0, rowDims.length - 1)).fill(""), ...cols.map(c => colTotals[c])].join(";"));
   const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
