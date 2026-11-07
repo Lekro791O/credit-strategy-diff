@@ -26,7 +26,7 @@ _PROMPT = """Ты — опытный риск-аналитик, проверяю
 2. что, скорее всего, является ожидаемым следствием правки, а не поломкой;
 3. на что посмотреть в первую очередь.
 
-Только по данным сводки, не выдумывай числа.
+Только по данным сводки, не выдумывай числа. Совместное изменение решения и порога — наблюдение, не доказательство причинности.
 
 СВОДКА:
 """
@@ -34,10 +34,10 @@ _PROMPT = """Ты — опытный риск-аналитик, проверяю
 
 def build_summary(mart: SQLiteMart, check_rows: list[dict[str, Any]]) -> dict[str, Any]:
     stats = mart.decision_stats()
-    top_attrs = mart.conn.execute(
-        "SELECT PATH, COUNT(DISTINCT APP_ID) c FROM mart WHERE DIFF_FLAG = 1 "
-        "GROUP BY PATH ORDER BY c DESC LIMIT 10"
-    ).fetchall()
+    where = (mart.run_clause + ' AND ') if mart.run_clause else ''
+    top_attrs = mart.query(
+        f"SELECT PATH, COUNT(DISTINCT APP_ID) AS c FROM {mart.fact_table} "
+        f"WHERE {where}DIFF_FLAG=1 GROUP BY PATH ORDER BY c DESC LIMIT 10")
     fails = [r for r in check_rows if r.get("RESULT") == "FAIL"][:20]
     return {
         "total_apps": stats["total_apps"],
@@ -45,7 +45,7 @@ def build_summary(mart: SQLiteMart, check_rows: list[dict[str, Any]]) -> dict[st
         "decision_before": stats["decision_before"],
         "decision_after": stats["decision_after"],
         "top_changed_attributes": [
-            {"path": p, "apps": c} for p, c in top_attrs],
+            {"path": r["PATH"], "apps": r["c"]} for r in top_attrs],
         "failed_checks": [
             {k: r.get(k) for k in
              ("LABEL", "SOURCE", "ARGUMENT", "CNT", "TOTAL", "METRIC")}

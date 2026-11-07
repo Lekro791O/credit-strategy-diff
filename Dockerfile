@@ -6,6 +6,9 @@ COPY api/requirements.txt api/requirements.txt
 RUN pip install --no-cache-dir -r api/requirements.txt
 
 COPY api api
+COPY pipeline pipeline
+COPY mart mart
+COPY checkrunner checkrunner
 COPY frontend frontend
 COPY task task
 COPY README.md .

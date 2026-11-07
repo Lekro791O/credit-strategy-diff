@@ -46,6 +46,8 @@ def render_checks_html(run: dict[str, Any], app_url: str) -> str:
         )
     )
     fails = sum(1 for r in rows if r.get("RESULT") == "FAIL")
+    diagnostics = ''.join('<li>' + _esc(e.get('check', '?')) + ': ' + _esc(e.get('error', e)) + '</li>'
+                          for e in run.get('errors', []))
 
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -70,6 +72,7 @@ tr.fail.low td{{background:#fdf6ec;color:#7a6a4f}}
 <p><a href="{html.escape(app_url, quote=True)}">Сводный отчёт приложения →</a></p>
 <table><thead><tr><th>проверка</th>{''.join(f'<th>{COL_TITLES[c]}</th>' for c in COLS)}<th>заявки</th></tr></thead>
 <tbody>{body}</tbody></table>
+<h2>Диагностика исполнения</h2><ul>{diagnostics}</ul>
 <div class="meta">Сформировано приложением credit-strategy-diff. CONFIDENCE=LOW —
 срабатываний мало, это сигнал для проверки, а не подтверждённая поломка.</div>
 </body></html>"""

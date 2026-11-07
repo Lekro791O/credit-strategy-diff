@@ -6,7 +6,17 @@ this service to untrusted Python: checkrunner exports a run-only snapshot.
 from __future__ import annotations
 
 from contextlib import contextmanager
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows: advisory-locks нет, сервер однопроцессный — безопасный no-op
+    class _FcntlStub:
+        LOCK_EX = LOCK_UN = 0
+
+        @staticmethod
+        def flock(_file, _operation):
+            return None
+
+    fcntl = _FcntlStub()
 import json
 from pathlib import Path
 import tempfile
