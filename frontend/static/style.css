@@ -5,14 +5,14 @@
    сетка, мягкая подсветка малых значений #FCE4D6.
    ============================================================ */
 :root {
-  --pink: #2563eb;        /* акцент: спокойный синий */
-  --pink-deep: #1d4ed8;
-  --pink-soft: #eff4ff;
+  --pink: #4d7775;        /* акцент: спокойный синий */
+  --pink-deep: #365d5c;
+  --pink-soft: #e3ede8;
   --pink-mist: #f6f8fb;
   --rose: #d7e3f8;
-  --bg-1: #f4f6f9;
-  --bg-2: #eef1f5;
-  --card: #ffffff;
+  --bg-1: #eaece8;
+  --bg-2: #e3e8e4;
+  --card: #f7f4ee;
   --ink: #1f2937;
   --muted: #64748b;
   --line: #e2e8f0;
@@ -33,14 +33,14 @@
   --code-ink: #e2e8f0;
 }
 [data-theme="dark"] {
-  --pink: #60a5fa;
+  --pink: #9bc8bb;
   --pink-deep: #93c5fd;
   --pink-soft: #16233b;
   --pink-mist: #131c2e;
   --rose: #24344f;
-  --bg-1: #0b1220;
-  --bg-2: #0e1626;
-  --card: #162032;
+  --bg-1: #1b2425;
+  --bg-2: #202c2c;
+  --card: #293536;
   --ink: #e2e8f0;
   --muted: #94a3b8;
   --line: #263449;
@@ -107,7 +107,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--rose); border-color: var(--pink); }
 button {
   padding: 8px 16px; border: 1px solid var(--pink); border-radius: 8px;
-  background: var(--pink); color: #fff; font-weight: 600; font-size: 13px;
+  background: var(--pink); color: #f5f2e9; font-weight: 600; font-size: 13px;
   cursor: pointer; transition: background .15s, box-shadow .15s, transform .1s;
 }
 button:hover { background: var(--pink-deep); box-shadow: var(--shadow); }
@@ -357,7 +357,7 @@ tr.row-low { opacity: .82; }
   background: var(--ink); color: var(--bg-1); padding: 10px 16px; border-radius: 10px;
   box-shadow: var(--shadow-lg); font-size: 13px; animation: toast-in .25s ease;
 }
-.toast.err { background: var(--bad); color: #fff; }
+.toast.err { background: var(--bad); color: #f5f2e9; }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
 
 .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; }

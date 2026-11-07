@@ -687,7 +687,7 @@ async function renderRun(id, tab = "pivot") {
         <div class="lbl">решения: было ${esc(fmtObj(s.decision_before))} → стало ${esc(fmtObj(s.decision_after))}</div></div>
     </div>
     ${share >= 0.95 ? `<div class="warn">Изменились почти все заявки (${(share * 100).toFixed(0)}%). Проверьте, что нормализация не помечает расхождения формата как изменения.</div>` : ""}
-    <div id="brief-slot"></div>
+    <div class="hint">Загружено: ${run.quality?.total_apps ?? s.total_apps ?? 0} · допущено: ${run.quality?.eligible_apps ?? s.total_apps ?? 0} · исключено: ${run.quality?.excluded_apps ?? 0}</div>${(run.diagnostics || []).length ? `<details><summary>Причины исключения</summary>${run.diagnostics.map(d => `<div>${esc(d.APP_ID)} · ${esc(d.SOURCE)} · ${esc(d.MESSAGE)}</div>`).join("")}</details>` : ""}<div id="brief-slot"></div>
     <div id="matrix-slot"></div>
     <div id="split-slot"></div>`;
 
@@ -868,16 +868,16 @@ async function renderSourceSplit(id) {
     </div>`;
   slot.innerHTML = `<div class="card"><h3 style="margin-top:0">Что изменилось: логика стратегии или входные данные</h3>
     <div class="split-grid">
-      ${card("logic", "только логика стратегии", "различия в decisionResult и прочих блоках — правка действительно меняет работу стратегии", "logic")}
-      ${card("external_only", "только внешние данные", "изменились ext_data/characteristics — внешний источник вернул другое; стратегия не тронута, это ложная тревога", "ext")}
-      ${card("both", "и то, и другое", "изменения и во внешних данных, и в логике — смотреть вручную", "both")}
+      ${card("logic", "только поля результата", "изменились поля результата; причина требует проверки", "logic")}
+      ${card("external_only", "только входные поля", "изменились входные поля; влияние на решение требует проверки", "ext")}
+      ${card("both", "и то, и другое", "изменились входные поля и поля результата", "both")}
     </div>
-    <p class="hint">Считается по заявкам с различиями (${total}). «Только внешние данные» — сигнал проверить источник, а не стратегию. Категории по префиксу пути атрибута: ext_data и characteristics — внешние источники, остальное — логика.</p>
+    <p class="hint">Считается по заявкам с различиями (${total}). Категории показывают совпадение изменений, а не их причину. Категории по префиксу пути атрибута: ext_data и characteristics — внешние источники, остальное — логика.</p>
   </div>`;
 }
 
 function showAppIds(id, ids, title) {
-  openModal(title + ` (${ids.length})`,
+  openModal(title + ` (показано: ${ids.length}, не более 500)`,
     ids.slice(0, 500).map(a => `<a style="display:inline-block;margin:2px 8px" onclick="showApp('${id}','${esc(a)}')">${esc(a)}</a>`).join("") || "<p>пусто</p>");
 }
 
@@ -890,10 +890,7 @@ async function renderPivot(id) {
   try { ({ dims: DIMS_LIST } = await api("/api/facts/dims")); } catch (_) {}
   el.innerHTML = `
     <div class="card">
-      <p class="hint">Сводная считает <b>число заявок</b> (COUNT DISTINCT APP_ID), у которых есть атрибут,
-      попадающий в группу по всем выбранным измерениям. Измерение «срез» — на какой стороне существует атрибут;
-      «бакет» — значение после бакетизации на выбранном срезе; «хвост пути» — промежуточные сегменты пути.
-      Клик по ячейке открывает ровно этих заявок. Цвет — насыщенность розового тем выше, чем больше заявок.</p>
+      <p class="hint">В ячейках — число уникальных заявок. Нажмите на число, чтобы открыть список.</p>
       <div class="toolbar">
         <div><label>Группировать строки по (порядок чипов = порядок строк)</label>
           <div class="chips" id="pv-dim-chips"></div></div>
@@ -935,6 +932,7 @@ let lastPivot = null; // для CSV-экспорта
 async function loadPivot(id) {
   const box = document.getElementById("pv-table");
   const colDim = document.getElementById("pv-cols").value;
+  if (colDim && pivotRowDims.includes(colDim)) { box.textContent = "Выберите для колонок другое измерение: оно уже используется в строках."; document.getElementById("pv-csv").style.display = "none"; lastPivot = null; return; }
   const params = new URLSearchParams({ dims: pivotRowDims.join(",") + (colDim ? "," + colDim : "") });
   const ct = document.getElementById("pv-ct").value;
   if (ct) params.set("change_type", ct);
@@ -945,7 +943,7 @@ async function loadPivot(id) {
   for (const [k, v] of Object.entries(segFilters)) params.set(k, v);
   box.innerHTML = `<div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:80%"></div>`;
   let data;
-  try { data = await api(`/api/runs/${id}/facts?${params}`); }
+  try { data = await api(`/api/runs/${id}/pivot`, { method: "POST", body: JSON.stringify({dimensions: [...new Set([...pivotRowDims, ...(colDim ? [colDim] : [])])], column_dimension: colDim || null, filters: Object.fromEntries([...params.entries()].filter(([k]) => k !== "dims"))}) }); }
   catch (e) { box.textContent = "Ошибка: " + e.message; return; }
   if (!data.rows.length) { lastPivot = null; document.getElementById("pv-csv").style.display = "none";
     box.innerHTML = emptyState("Нет данных по такому фильтру", "Смягчите условия, смените раскладку или сбросьте фильтры разрезов."); return; }
@@ -970,13 +968,11 @@ async function loadPivot(id) {
     Object.assign(f, cell.dims);
     return f;
   };
-  const colTotals = {}, rowTotals = [];
-  let grand = 0;
-  for (const g of groups.values()) {
-    let rt = 0;
-    for (const c of cols) { const v = g.cells[c]?.cnt_apps || 0; colTotals[c] = (colTotals[c] || 0) + v; rt += v; }
-    rowTotals.push(rt); grand += rt;
-  }
+  const rowTotalMap = new Map((data.row_totals || []).map(r => [rowDims.map(d => r.dims[d] ?? "").join("‖"), r.cnt_apps]));
+  const colTotals = Object.fromEntries((data.column_totals || []).map(r => [r.dims[colDim], r.cnt_apps]));
+  if (!colDim) colTotals["заявки"] = data.totals.cnt_apps;
+  const rowTotals = [...groups.keys()].map(k => rowTotalMap.get(k) ?? 0);
+  const grand = data.totals.cnt_apps;
   const heat = v => {
     // идея из прототипа организаторов: малые значения — мягкая подсветка,
     // остальное — сдержанная шкала насыщенности
@@ -994,8 +990,8 @@ async function loadPivot(id) {
       const [colIdx, dir] = sortState;
       keys.sort((x, y) => {
         const gx = groups.get(x), gy = groups.get(y);
-        const vx = colIdx < 0 ? rowTotals[keys.indexOf(x)] ?? 0 : gx.cells[cols[colIdx]]?.cnt_apps || 0;
-        const vy = colIdx < 0 ? rowTotals[keys.indexOf(y)] ?? 0 : gy.cells[cols[colIdx]]?.cnt_apps || 0;
+        const vx = colIdx < 0 ? rowTotalMap.get(x) ?? 0 : gx.cells[cols[colIdx]]?.cnt_apps || 0;
+        const vy = colIdx < 0 ? rowTotalMap.get(y) ?? 0 : gy.cells[cols[colIdx]]?.cnt_apps || 0;
         return (vx - vy) * dir;
       });
     }
@@ -1009,10 +1005,10 @@ async function loadPivot(id) {
           const cell = g.cells[c];
           if (!cell) return "<td>·</td>";
           return `<td class="clickable" title="показать заявки этой группы" style="${heat(cell.cnt_apps)}" data-f='${esc(JSON.stringify(filterOf(cell)))}'>${cell.cnt_apps}</td>`;
-        }).join("") + `<td style="font-weight:700">${rowTotals[ri]}</td></tr>`;
+        }).join("") + `<td style="font-weight:700">${rowTotalMap.get(rk) ?? 0}</td></tr>`;
     });
     html += `<tr class="totals"><td>итого</td>${cols.map(c => `<td>${colTotals[c]}</td>`).join("")}<td>${grand}</td></tr>`;
-    box.innerHTML = html + "</tbody></table></div>";
+    box.innerHTML = (data.rows.length >= data.limit ? `<p class="warn">Показаны первые ${data.limit} групп. Уточните фильтры; CSV содержит показанные группы.</p>` : "") + html + "</tbody></table></div>";
     box.querySelectorAll("td.clickable").forEach(td => td.onclick = () => showApps(id, JSON.parse(td.dataset.f)));
     box.querySelectorAll("th.sortable").forEach(th => th.onclick = () => {
       const ci = +th.dataset.ci;
