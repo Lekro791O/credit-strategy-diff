@@ -1,0 +1,12 @@
+{
+  "cpu": "Apple M4",
+  "logical_cpus": 10,
+  "memory_bytes": 25769803776,
+  "memory_gib": 24,
+  "macOS": "27.0.1",
+  "architecture": "arm64",
+  "python": "3.13.4",
+  "duckdb": "2.0.0",
+  "duckdb_threads": 2,
+  "measured_on": "2026-11-07"
+}

@@ -1,0 +1,123 @@
+{
+  "phase": "after",
+  "run_id": "4a5cca1486d0",
+  "base_commit": "2aa905a94943bf0927f57820078a974aa0ee5b49",
+  "mart_store_sha256": "330f06b9b13547ba964144201b0d5a43a81036e227230192ba6cf05d8cc283de",
+  "duckdb": "2.0.0",
+  "machine": {
+    "system": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64",
+    "python": "3.13.4"
+  },
+  "preparation_seconds": null,
+  "metrics": {
+    "first_facts": {
+      "seconds": [
+        1.1172755000297911,
+        1.1356320829945616,
+        1.1087792080361396
+      ],
+      "median_seconds": 1.1172755000297911,
+      "band": "minimum"
+    },
+    "layout": {
+      "seconds": [
+        1.2100702080060728,
+        1.2022035000263713,
+        1.1941424169926904
+      ],
+      "median_seconds": 1.2022035000263713,
+      "band": "minimum"
+    },
+    "filter": {
+      "seconds": [
+        0.4985478339949623,
+        0.5077955410233699,
+        0.509280625032261
+      ],
+      "median_seconds": 0.5077955410233699,
+      "band": "good"
+    },
+    "cell_to_apps": {
+      "seconds": [
+        0.30184766702586785,
+        0.3144312499789521,
+        0.30488374998094514
+      ],
+      "median_seconds": 0.30488374998094514,
+      "band": "good"
+    },
+    "application": {
+      "seconds": [
+        0.23473395803011954,
+        0.24009691597893834,
+        0.23877687501953915
+      ],
+      "median_seconds": 0.23877687501953915,
+      "band": "excellent"
+    },
+    "cached_attribute": {
+      "seconds": [
+        1.2749980669468641e-05,
+        1.329201040789485e-05,
+        1.1458992958068848e-05
+      ],
+      "median_seconds": 1.2749980669468641e-05,
+      "band": "excellent"
+    },
+    "drill_total": {
+      "seconds": [
+        0.5365943750366569,
+        0.5545414579682983,
+        0.5436720839934424
+      ],
+      "median_seconds": 0.5436720839934424,
+      "band": "good"
+    },
+    "report_reopen": {
+      "seconds": [
+        1.4982990000280552,
+        1.553090000001248,
+        1.535648333025165
+      ],
+      "median_seconds": 1.535648333025165,
+      "band": "minimum"
+    },
+    "run_metadata_reopen": {
+      "seconds": [
+        0.32920204201946035,
+        0.32425737503217533,
+        0.32295837497804314
+      ],
+      "median_seconds": 0.32425737503217533,
+      "band": "good"
+    },
+    "checks_reopen": {
+      "seconds": [
+        0.16173670801799744,
+        0.16569108405383304,
+        0.1681946250027977
+      ],
+      "median_seconds": 0.16569108405383304,
+      "band": "excellent"
+    },
+    "facts_reopen": {
+      "seconds": [
+        1.0073491660295986,
+        1.0505909589701332,
+        1.0288317920058034
+      ],
+      "median_seconds": 1.0288317920058034,
+      "band": "minimum"
+    }
+  },
+  "database_variant": "after.duckdb",
+  "methodology": "3 fresh uvicorn processes on same completed 2002-app run, OS cache retained; localhost HTTP through JSON decode; no browser rendering",
+  "scope": {
+    "total_apps": 2002,
+    "changed_apps": 502,
+    "decision_changed_apps": 385,
+    "vertical_rows": 572221,
+    "check_rows": 32
+  }
+}

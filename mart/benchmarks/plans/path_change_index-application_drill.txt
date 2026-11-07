@@ -1,0 +1,49 @@
+╭─ Summary ───────────╮
+│ Total Time: 0.0039s │
+╰─────────────────────╯
+╭─ Projection ─────────────────────────────────────────────────────────────────────────────────╮
+│ Projections:                                                                                 │
+│ __internal_decompress_string(#0), #1, #2, #3, #4, CAST(#5 AS INTEGER)                        │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┒┎─────────────────────────────────────────────╯
+╭─ Order By ────────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Order By: PATH ASC, ARRAY_KEY ASC                                                            │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┒┎─────────────────────────────────────────────╯
+╭─ Projection ──────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Projections:                                                                                 │
+│ __internal_compress_string_uhugeint(#0), #1, #2, #3, #4, CAST(#5 AS TINYINT)                 │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┒┎─────────────────────────────────────────────╯
+╭─ Projection ──────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Projections: APP_ID, PATH, ARRAY_KEY, VALUE_BEFORE, VALUE_AFTER, DIFF_FLAG                   │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┒┎─────────────────────────────────────────────╯
+╭─ Projection ──────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Projections: APP_ID, ARRAY_KEY, PATH, VALUE_BEFORE, VALUE_AFTER, DIFF_FLAG                   │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┒┎─────────────────────────────────────────────╯
+╭─ Hash Join ───────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Join Type: RIGHT                                                                             │
+│ Conditions: run_id = run_id, APP_ID = APP_ID, PATH = PATH, ARRAY_KEY = ARRAY_KEY             │
+│ 141 rows                                                                                 0µs │
+╰───────────────────────────────────────────────┰┰─────────────────────────────────────────────╯
+                                                ┃┠────────────────────────────────────────────────────────────────────────────────────────────────┰┒
+╭─ Table Scan ──────────────────────────────────┚┖─────────────────────────────────────────────╮  ╭─ Hash Join ───────────────────────────────────┚┖─────────────────────────────────────────────╮
+│ Table: run.main.datamart                                                                     │  │ Join Type: RIGHT                                                                             │
+│ Type: Sequential Scan                                                                        │  │ Conditions: run_id = run_id, APP_ID = APP_ID, PATH = PATH, ARRAY_KEY = ARRAY_KEY             │
+│ Projections: run_id, APP_ID, PATH, ARRAY_KEY, VALUE                                          │  │ 141 rows                                                                                 0µs │
+│ Filters: APP_ID = 'I32554354', SOURCE = 'AFTER'                                              │  ╰───────────────────────────────────────────────┰┰─────────────────────────────────────────────╯
+│ Dynamic Filters:                                                                             │                                                  ┃┠────────────────────────────────────────────────────────────────┰┒
+│ run_id = 'run', APP_ID = 'I32554354',                                                        │  ╭─ Table Scan ──────────────────────────────────┚┖─────────────────────────────────────────────╮  ╭─ Table Scan ──┚┖──────────────╮
+│ optional: (PATH >= 'appData.application_id') AND optional: (PATH <= 'tariff_matrix.tariff'), │  │ Table: run.main.datamart                                                                     │  │ Table: run.main.attributes    │
+│ optional: (ARRAY_KEY >= '') AND optional: (ARRAY_KEY <= 'score_okb')                         │  │ Type: Sequential Scan                                                                        │  │ Type: Sequential Scan         │
+│ Row Groups Scanned: 1 / 5                                                                    │  │ Projections: run_id, APP_ID, PATH, ARRAY_KEY, VALUE                                          │  │ Projections: run_id, APP_ID,  │
+│ 135 rows                                                                                 0µs │  │ Filters: APP_ID = 'I32554354', SOURCE = 'BEFORE'                                             │  │              PATH, ARRAY_KEY, │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯  │ Dynamic Filters:                                                                             │  │              DIFF_FLAG        │
+                                                                                                  │ run_id = 'run', APP_ID = 'I32554354',                                                        │  │ Filters: APP_ID = 'I32554354' │
+                                                                                                  │ optional: (PATH >= 'appData.application_id') AND optional: (PATH <= 'tariff_matrix.tariff'), │  │ Row Groups Scanned: 1 / 3     │
+                                                                                                  │ optional: (ARRAY_KEY >= '') AND optional: (ARRAY_KEY <= 'score_okb')                         │  │ 141 rows                  0µs │
+                                                                                                  │ Row Groups Scanned: 1 / 5                                                                    │  ╰───────────────────────────────╯
+                                                                                                  │ 129 rows                                                                                 0µs │
+                                                                                                  ╰──────────────────────────────────────────────────────────────────────────────────────────────╯

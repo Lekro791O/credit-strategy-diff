@@ -119,8 +119,6 @@ class MartStore:
             con.execute(f'''CREATE TABLE IF NOT EXISTS counts AS
                 SELECT run_id, {dim_sql}, count(DISTINCT APP_ID)::BIGINT AS CNT
                 FROM fact_members GROUP BY run_id, {dim_sql}''')
-            con.execute("CREATE INDEX IF NOT EXISTS attr_path ON attributes(run_id, PATH)")
-            con.execute("CREATE INDEX IF NOT EXISTS attr_change ON attributes(run_id, CHANGE_TYPE)")
 
     @contextmanager
     def connection(self):
@@ -232,6 +230,16 @@ class MartStore:
                 dims = ', '.join(map(quoted, FACT_DIMS))
                 con.execute(f'''INSERT INTO counts SELECT run_id, {dims}, count(DISTINCT APP_ID)
                     FROM fact_members WHERE run_id=? GROUP BY run_id, {dims}''', [run_id])
+                # Build secondary ART indexes after the bulk load. A leading
+                # run_id in a composite index does not provide the same selective
+                # APP_ID scan as a single-column ART index in DuckDB's drill query.
+                # Primary keys still enforce the unchanged identity contracts.
+                for statement in (
+                    'CREATE INDEX IF NOT EXISTS attr_path ON attributes(run_id, PATH)',
+                    'CREATE INDEX IF NOT EXISTS attr_change ON attributes(run_id, CHANGE_TYPE)',
+                    'CREATE INDEX IF NOT EXISTS attr_app_lookup ON attributes(APP_ID)',
+                ):
+                    con.execute(statement)
                 con.execute("COMMIT")
             except BaseException:
                 con.execute("ROLLBACK")
