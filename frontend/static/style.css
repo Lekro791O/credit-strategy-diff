@@ -234,6 +234,22 @@ td.clickable:hover, a:hover { color: var(--pink-deep); text-decoration: underlin
 .mx-cell.stable { background: var(--ok-bg); } .mx-cell.stable .n { color: var(--ok); }
 .mx-cell.flip-bad { background: var(--bad-bg); } .mx-cell.flip-bad .n { color: var(--bad); }
 
+/* «логика vs данные» */
+.split-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+.split-cell {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: var(--pink-mist); cursor: pointer; text-align: center;
+  transition: transform .12s, box-shadow .15s;
+}
+.split-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.split-cell .n { font-size: 22px; font-weight: 800; color: var(--pink-deep); }
+.split-cell .t { font-weight: 700; margin: 2px 0; }
+.split-cell .p { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.split-cell.ext { background: var(--warn-bg, #fff8e1); }
+.split-cell.ext .n { color: #b8860b; }
+.split-cell.both { background: #fdeef4; border-style: dashed; }
+@media (max-width: 760px) { .split-grid { grid-template-columns: 1fr; } }
+
 /* «главное за 10 секунд» */
 .brief { border-left: 4px solid var(--pink); }
 .brief ul { margin: 8px 0; padding-left: 20px; }

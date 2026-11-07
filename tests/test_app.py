@@ -180,3 +180,13 @@ def test_dataset_upload_zip():
 def test_dataset_upload_rejects_garbage():
     r = client.post("/api/datasets/upload", files={"file": ("bad.zip", b"not a zip")})
     assert r.status_code == 422
+
+
+def test_source_split_logic_vs_external():
+    run = _wait_done(_make_run()["id"])
+    rid = run["id"]
+    data = client.get(f"/api/runs/{rid}/source_split").json()
+    for key in ("logic", "external_only", "both"):
+        assert key in data and data[key]["cnt"] == len(data[key]["app_ids"])
+    assert data["logic"]["cnt"] + data["external_only"]["cnt"] + data["both"]["cnt"] \
+        == run["summary"]["apps_with_diffs"]

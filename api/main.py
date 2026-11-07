@@ -384,6 +384,35 @@ def decision_matrix(run_id: str) -> dict[str, Any]:
         mart.close()
 
 
+@app.get("/api/runs/{run_id}/source_split")
+def source_split(run_id: str) -> dict[str, Any]:
+    """Разделение «логика vs данные» (сценарий 4): у заявок с различиями
+    отделяем изменения во внешних источниках (ext_data/characteristics —
+    ложная тревога, стратегия не тронута) от изменений логики стратегии
+    (всё остальное). Клик по категории открывает список заявок."""
+    mart = manager.open_mart(run_id)
+    try:
+        where = f"{mart.run_clause} AND" if mart.run_clause else ""
+        rows = mart.query(
+            "SELECT APP_ID, "
+            "MAX(CASE WHEN PATH LIKE 'ext_data%' OR PATH LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS ext_chg, "
+            "MAX(CASE WHEN PATH NOT LIKE 'ext_data%' AND PATH NOT LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS logic_chg "
+            f"FROM comparison WHERE {where} DIFF_FLAG = 1 GROUP BY APP_ID")
+    finally:
+        mart.close()
+    cats: dict[str, list[str]] = {"logic": [], "external_only": [], "both": []}
+    for r in rows:
+        if r["ext_chg"] and r["logic_chg"]:
+            cats["both"].append(r["APP_ID"])
+        elif r["ext_chg"]:
+            cats["external_only"].append(r["APP_ID"])
+        else:
+            cats["logic"].append(r["APP_ID"])
+    return {k: {"cnt": len(v), "app_ids": v[:500]} for k, v in cats.items()}
+
+
 # ---------- проверки ----------
 
 @app.get("/api/runs/{run_id}/checks")

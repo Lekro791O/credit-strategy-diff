@@ -660,7 +660,8 @@ async function renderRun(id, tab = "pivot") {
     </div>
     ${share >= 0.95 ? `<div class="warn">Изменились почти все заявки (${(share * 100).toFixed(0)}%). Проверьте, что нормализация не помечает расхождения формата как изменения.</div>` : ""}
     <div id="brief-slot"></div>
-    <div id="matrix-slot"></div>`;
+    <div id="matrix-slot"></div>
+    <div id="split-slot"></div>`;
 
   $view.innerHTML = `
     <div class="card">
@@ -696,7 +697,7 @@ async function renderRun(id, tab = "pivot") {
 
   document.querySelectorAll(".stat .num[data-n]").forEach(el => animateNum(el, +el.dataset.n));
 
-  if (run.status === "done") { renderBrief(id, run); renderMatrix(id); renderSegFilters(id); }
+  if (run.status === "done") { renderBrief(id, run); renderMatrix(id); renderSegFilters(id); renderSourceSplit(id); }
   if (tab === "pivot") renderPivot(id);
   else if (tab === "checks") renderChecks(id, run);
   else renderLlm(id, run);
@@ -818,6 +819,31 @@ async function renderMatrix(id) {
       ${cell("REJECT", "APPROVE")}${cell("REJECT", "REJECT")}
     </div>
     <p class="hint">Клик по ячейке — заявки этой группы. Диагональ — решения не изменились; красная ячейка — одобренные стали отклонёнными (самый опасный случай).</p>
+  </div>`;
+}
+
+async function renderSourceSplit(id) {
+  const slot = document.getElementById("split-slot");
+  if (!slot) return;
+  let data;
+  try { data = await api(`/api/runs/${id}/source_split`); }
+  catch (_) { return; }
+  const total = data.logic.cnt + data.external_only.cnt + data.both.cnt;
+  if (!total) { slot.innerHTML = ""; return; }
+  const card = (key, title, hint, cls) => `
+    <div class="split-cell ${cls}" ${data[key].cnt ? `onclick='showAppIds("${id}", ${JSON.stringify(data[key].app_ids)}, "${title}")'` : ""} title="показать заявки">
+      <div class="n">${data[key].cnt}</div>
+      <div class="t">${title}</div>
+      <div class="p">${(data[key].cnt / total * 100).toFixed(1)}% · клик — список</div>
+      <div class="hint">${hint}</div>
+    </div>`;
+  slot.innerHTML = `<div class="card"><h3 style="margin-top:0">Что изменилось: логика стратегии или входные данные</h3>
+    <div class="split-grid">
+      ${card("logic", "только логика стратегии", "различия в decisionResult и прочих блоках — правка действительно меняет работу стратегии", "logic")}
+      ${card("external_only", "только внешние данные", "изменились ext_data/characteristics — внешний источник вернул другое; стратегия не тронута, это ложная тревога", "ext")}
+      ${card("both", "и то, и другое", "изменения и во внешних данных, и в логике — смотреть вручную", "both")}
+    </div>
+    <p class="hint">Считается по заявкам с различиями (${total}). «Только внешние данные» — сигнал проверить источник, а не стратегию. Категории по префиксу пути атрибута: ext_data и characteristics — внешние источники, остальное — логика.</p>
   </div>`;
 }
 
