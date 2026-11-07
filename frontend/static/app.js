@@ -351,7 +351,10 @@ document.addEventListener("click", async event => {
   try {
     await api("/api/llm/gigachat", {method:"POST", body:JSON.stringify({key:document.getElementById("giga-key").value, scope:document.getElementById("giga-scope").value, model:document.getElementById("giga-model").value})});
     document.getElementById("giga-key").value = "";
-    document.getElementById("run-llm").checked = true;
+    const llmBox = document.getElementById("run-llm");
+    if (llmBox) llmBox.checked = true;
+    const st = document.getElementById("giga-status");
+    if (st) st.innerHTML = '<span class="badge done">подключено</span>';
     result.textContent = "Настройки сохранены. Доступ проверится при запросе мнения.";
   } catch (e) { result.textContent = "Не удалось сохранить: " + e.message; }
 });
@@ -421,14 +424,7 @@ async function renderRuns() {
         <input type="checkbox" id="run-llm" ${LLM_CONFIGURED ? "checked" : ""}>
         после прогона запросить «второе мнение» у языковой модели
       </label>
-      <div class="hint" style="margin:2px 0 0 24px">${esc(llmHint)}</div>
-      <details style="margin-top:10px"><summary>Подключить GigaChat</summary>
-        <p class="hint">Ключ сохраняется локально на этом компьютере и не отображается повторно. В модель отправляется сводка результатов и проверки.</p>
-        <label>Ключ авторизации</label><input id="giga-key" type="password" autocomplete="off" placeholder="Вставьте ключ авторизации">
-        <label>Тип доступа</label><select id="giga-scope"><option value="GIGACHAT_API_PERS">Личный</option><option value="GIGACHAT_API_B2B">Бизнес</option><option value="GIGACHAT_API_CORP">Корпоративный</option></select>
-        <label>Модель</label><input id="giga-model" value="GigaChat-2">
-        <button type="button" id="giga-save">Сохранить настройки</button><span id="giga-result" class="hint"></span>
-      </details>
+      <div class="hint" style="margin:2px 0 0 24px">${esc(llmHint)} Модель подключается в плашке «Подключить GigaChat» справа.</div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="createRun(false)">Запустить прогон</button>
         <button class="ghost" onclick="createRun(true)" title="сохранить настройки, чтобы запускать потом в один клик">Сохранить конфигурацию</button>
@@ -464,6 +460,17 @@ async function renderRuns() {
           </div>
           <button class="ghost" onclick="compareRuns()">сравнить</button>
         </div>` : ""}
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Подключить GigaChat <span id="giga-status">${LLM_CONFIGURED ? '<span class="badge done">подключено</span>' : '<span class="badge pending">не подключено</span>'}</span></h3>
+        <p class="hint">«Второе мнение» для отчёта: модель получает только сводку результатов и проверок (сдвиги решений, топ атрибутов, строки FAIL). Ключ хранится локально на этом компьютере (<code>data/gigachat.json</code>) и никуда не отправляется, кроме API GigaChat.</p>
+        <label>Ключ авторизации</label><input id="giga-key" type="password" autocomplete="off" placeholder="Вставьте ключ с developers.sber.ru" style="width:100%;max-width:340px">
+        <label>Тип доступа</label><select id="giga-scope"><option value="GIGACHAT_API_PERS">Личный</option><option value="GIGACHAT_API_B2B">Бизнес</option><option value="GIGACHAT_API_CORP">Корпоративный</option></select>
+        <label>Модель</label><input id="giga-model" value="GigaChat-2" size="16">
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button type="button" id="giga-save">Сохранить настройки</button>
+          <span id="giga-result" class="hint"></span>
+        </div>
       </div>
     </div>
   </div>`;
