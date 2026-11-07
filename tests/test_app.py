@@ -188,8 +188,10 @@ def test_source_split_logic_vs_external():
     data = client.get(f"/api/runs/{rid}/source_split").json()
     for key in ("logic", "external_only", "both"):
         assert key in data and data[key]["cnt"] == len(data[key]["app_ids"])
+        assert data[key]["attrs"] >= data[key]["cnt"]  # атрибутов не меньше, чем заявок
     assert data["logic"]["cnt"] + data["external_only"]["cnt"] + data["both"]["cnt"] \
         == run["summary"]["apps_with_diffs"]
+    assert data["logic"]["attrs"] + data["external_only"]["attrs"] + data["both"]["attrs"] > 0
 
 
 def test_mart_csv_export():

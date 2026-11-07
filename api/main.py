@@ -389,28 +389,35 @@ def source_split(run_id: str) -> dict[str, Any]:
     """Разделение «логика vs данные» (сценарий 4): у заявок с различиями
     отделяем изменения во внешних источниках (ext_data/characteristics —
     ложная тревога, стратегия не тронута) от изменений логики стратегии
-    (всё остальное). Клик по категории открывает список заявок."""
+    (всё остальное). Клик по категории открывает список заявок.
+    Помимо заявок считаем изменённые атрибуты: внешнее изменение почти
+    всегда тянет за собой логику (скор → модель → решение), поэтому
+    заявок «только внешние данные» может не быть, а атрибуты покажут."""
     mart = manager.open_mart(run_id)
     try:
         where = f"{mart.run_clause} AND" if mart.run_clause else ""
         rows = mart.query(
             "SELECT APP_ID, "
-            "MAX(CASE WHEN PATH LIKE 'ext_data%' OR PATH LIKE 'characteristics%' "
-            "THEN 1 ELSE 0 END) AS ext_chg, "
-            "MAX(CASE WHEN PATH NOT LIKE 'ext_data%' AND PATH NOT LIKE 'characteristics%' "
-            "THEN 1 ELSE 0 END) AS logic_chg "
+            "SUM(CASE WHEN PATH LIKE 'ext_data%' OR PATH LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS ext_n, "
+            "SUM(CASE WHEN PATH NOT LIKE 'ext_data%' AND PATH NOT LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS logic_n "
             f"FROM comparison WHERE {where} DIFF_FLAG = 1 GROUP BY APP_ID")
     finally:
         mart.close()
-    cats: dict[str, list[str]] = {"logic": [], "external_only": [], "both": []}
+    cats: dict[str, dict[str, Any]] = {
+        k: {"apps": [], "attrs": 0} for k in ("logic", "external_only", "both")}
     for r in rows:
-        if r["ext_chg"] and r["logic_chg"]:
-            cats["both"].append(r["APP_ID"])
-        elif r["ext_chg"]:
-            cats["external_only"].append(r["APP_ID"])
+        if r["ext_n"] and r["logic_n"]:
+            cat, attrs = "both", r["ext_n"] + r["logic_n"]
+        elif r["ext_n"]:
+            cat, attrs = "external_only", r["ext_n"]
         else:
-            cats["logic"].append(r["APP_ID"])
-    return {k: {"cnt": len(v), "app_ids": v[:500]} for k, v in cats.items()}
+            cat, attrs = "logic", r["logic_n"]
+        cats[cat]["apps"].append(r["APP_ID"])
+        cats[cat]["attrs"] += attrs
+    return {k: {"cnt": len(v["apps"]), "app_ids": v["apps"][:500], "attrs": v["attrs"]}
+            for k, v in cats.items()}
 
 
 # ---------- проверки ----------

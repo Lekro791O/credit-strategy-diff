@@ -885,7 +885,8 @@ async function renderSourceSplit(id) {
     <div class="split-cell ${cls}" ${data[key].cnt ? `data-cb="showAppIds:${cbArg(id)}:${cbArg(data[key].app_ids)}:${cbArg(title)}"` : ""} title="показать заявки">
       <div class="n">${data[key].cnt}</div>
       <div class="t">${title}</div>
-      <div class="p">${(data[key].cnt / total * 100).toFixed(1)}% · клик — список</div>
+      <div class="p">${(data[key].cnt / total * 100).toFixed(1)}% заявок · клик — список</div>
+      <div class="p">изменено атрибутов: ${data[key].attrs}</div>
       <div class="hint">${hint}</div>
     </div>`;
   slot.innerHTML = `<div class="card"><h3 style="margin-top:0">Что изменилось: логика стратегии или входные данные</h3>
@@ -894,7 +895,10 @@ async function renderSourceSplit(id) {
       ${card("external_only", "только входные поля", "изменились входные поля; влияние на решение требует проверки", "ext")}
       ${card("both", "и то, и другое", "изменились входные поля и поля результата", "both")}
     </div>
-    <p class="hint">Считается по заявкам с различиями (${total}). Категории показывают совпадение изменений, а не их причину. Категории по префиксу пути атрибута: ext_data и characteristics — внешние источники, остальное — логика.</p>
+    <p class="hint">Считается по заявкам с различиями (${total}). Внешнее изменение почти всегда тянет за собой логику
+    (скор источника → предикторы модели → решение), поэтому заявок «только внешние данные» может быть 0 —
+    смотрите число изменённых атрибутов. Категории показывают совпадение изменений, а не их причину:
+    ext_data и characteristics — внешние источники, остальное — логика.</p>
   </div>`;
 }
 
