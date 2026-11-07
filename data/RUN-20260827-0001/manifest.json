@@ -1,0 +1,18 @@
+{
+  "run_id": "RUN-20260827-0001",
+  "applications": 2002,
+  "srez": {
+    "BEFORE": {
+      "label": "MASTER",
+      "dir": "RESULTS/BEFORE_MASTER"
+    },
+    "AFTER": {
+      "label": "BETA",
+      "dir": "RESULTS/AFTER_BETA"
+    }
+  },
+  "technical_fields_always_differ": [
+    "appData.request_id",
+    "appData.createDateTime"
+  ]
+}
