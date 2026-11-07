@@ -1042,7 +1042,14 @@ async function loadPivot(id) {
       cols.map((c, i) => `<th class="sortable" data-ci="${i}" title="сортировать по колонке">${esc(colTitle(c))}</th>`).join("") + `</tr></thead><tbody>`;
     keys.forEach((rk, ri) => {
       const g = groups.get(rk);
-      html += `<tr>${g.dims.map(d => `<td>${esc(d)}</td>`).join("")}` +
+      html += `<tr>${g.dims.map((d, di) => {
+        const dimName = rowDims[di];
+        const pretty = dimName === "path" ? prettyPath(d)
+          : dimName === "key" ? prettyKey(d)
+          : dimName === "prefix" || dimName === "class" ? (SEG_RU[d] || humanizeSeg(d))
+          : d;
+        return `<td title="${dimName}: ${esc(d)}">${esc(pretty)}</td>`;
+      }).join("")}` +
         cols.map(c => {
           const cell = g.cells[c];
           if (!cell) return "<td>·</td>";
@@ -1100,14 +1107,14 @@ async function showApp(id, appId) {
   const data = await api(`/api/runs/${id}/apps/${appId}`);
   const seg = data.segment || {};
   const rows = data.attributes.map(r => `<tr class="${r.DIFF_FLAG ? "fail" : ""}">
-      <td>${esc(r.PATH)}${r.ARRAY_KEY ? `<br><span class="hint">[${esc(r.ARRAY_KEY)}]</span>` : ""}</td>
+      <td title="${esc(r.PATH)}"><b>${esc(prettyKey(r.KEY, r.PATH))}</b><br><span class="hint">${esc(prettyPath(r.PATH))}${r.ARRAY_KEY ? ` · [${esc(r.ARRAY_KEY)}]` : ""}</span></td>
       <td>${esc(r.VALUE_BEFORE || "—")}</td><td>${esc(r.VALUE_AFTER || "—")}</td>
       <td title="${esc(r.CHANGE_TYPE)}">${esc(ctRu(r.CHANGE_TYPE))}</td></tr>`).join("");
   openModal(`Заявка ${appId}: что изменилось`, `
     <p class="hint">Итоговое решение: ${decisionStamp(seg.DECISION_BEFORE)} → ${decisionStamp(seg.DECISION_AFTER)}
        · продукты: ${esc(seg.PRODUCTS || "—")} · модель: ${esc(seg.PD_MODEL_BEFORE || "—")} → ${esc(seg.PD_MODEL_AFTER || "—")}
-       <br>Красным — изменившиеся атрибуты; «—» значит атрибута нет в этом срезе.</p>
-    <div class="twrap"><table><thead><tr><th>Атрибут (путь)</th><th>Было (прод)</th><th>Стало (бета)</th><th>Что случилось</th></tr></thead>
+       <br>Красным — изменившиеся атрибуты; «—» значит атрибута нет в этом срезе. Технический путь — при наведении на название атрибута.</p>
+    <div class="twrap"><table><thead><tr><th>Атрибут</th><th>Было (прод)</th><th>Стало (бета)</th><th>Что случилось</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`);
 }
 
