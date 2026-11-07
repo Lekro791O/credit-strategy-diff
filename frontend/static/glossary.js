@@ -128,11 +128,11 @@ function labelRu(l) { return LABEL_RU[l] ?? (l || "—"); }
 
 /* аргументы проверок: стоп-факторы, модели, продукты */
 const RULE_RU = {
-  AGELOW@21: "младше 21 года",
-  AGELOW@18: "младше 18 лет",
-  RESTRICTED_REGIONS: "запрещённый регион",
-  NOINCOME: "нет подтверждения дохода",
-  DOCS_EXPIRED: "просрочены документы",
+  "AGELOW@21": "младше 21 года",
+  "AGELOW@18": "младше 18 лет",
+  "RESTRICTED_REGIONS": "запрещённый регион",
+  "NOINCOME": "нет подтверждения дохода",
+  "DOCS_EXPIRED": "просрочены документы",
 };
 const MODEL_RU = {
   ML_MICRO_LOAN_V1: "модель «микрозайм V1»",

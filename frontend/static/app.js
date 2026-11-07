@@ -175,8 +175,8 @@ function route() {
   const h = location.hash || "#/runs";
   document.querySelectorAll("nav#tabs a").forEach(a =>
     a.classList.toggle("active", h.startsWith(a.getAttribute("href"))));
-  const m = h.match(/^#\/runs\/(\w+)/);
-  if (m) renderRun(m[1]);
+  const m = h.match(/^#\/runs\/(\w+)(?:\/(\w+))?/);
+  if (m) renderRun(m[1], m[2] === "checks" || m[2] === "llm" ? m[2] : "pivot");
   else if (h.startsWith("#/workspace")) renderWorkspace();
   else renderRuns();
 }
