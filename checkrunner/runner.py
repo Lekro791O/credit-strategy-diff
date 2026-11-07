@@ -64,7 +64,7 @@ class CheckRunner:
         self.backend, self.timeout, self.image = backend, timeout, image
         self.max_output_bytes = max_output_bytes
 
-    def run(self, store, run_id, checks=None, *, on_event=None):
+    def run(self, store, run_id, checks=None, *, on_event=None, persist=True):
         specs = provided_checks() if checks is None else list(checks)
         report = dict(run_id=run_id, status='RUNNING', rows=[], executions=[], diagnostics=[])
         seen_ids = set()
@@ -116,7 +116,8 @@ class CheckRunner:
             report['status'] = 'COMPLETED_WITH_ERRORS' if errors else 'COMPLETED'
             report['verdict'] = 'FAIL' if any(r['RESULT'] == 'FAIL' for r in report['rows']) else (
                 None if errors or not report['rows'] else 'PASS')
-            store.save_check_report(run_id, revision, report)
+            if persist:
+                store.save_check_report(run_id, revision, report)
             return report
 
     def _launch(self, snapshot, request):
@@ -124,7 +125,8 @@ class CheckRunner:
             folder = Path(work)
             # Each check gets its own snapshot; even trusted accidental writes
             # cannot poison another check. The production database is never passed.
-            shutil.copyfile(snapshot, folder / 'run.duckdb')
+            if snapshot is not None:
+                shutil.copyfile(snapshot, folder / 'run.duckdb')
             result_path = folder / 'result.json'
             container_name = 'strategy-check-' + uuid.uuid4().hex
             if self.backend == 'docker':
@@ -142,11 +144,13 @@ class CheckRunner:
                 # check stdout is redirected to stderr by container_entry.
             else:
                 request['database'] = str(folder / 'run.duckdb')
-                command = [sys.executable, '-m', 'checkrunner.worker', str(folder / 'request.json'), str(result_path)]
+                module = 'checkrunner.procedure_worker' if request.get('worker_kind') == 'procedure' else 'checkrunner.worker'
+                command = [sys.executable, '-m', module, str(folder / 'request.json'), str(result_path)]
             (folder / 'request.json').write_text(json.dumps(request, ensure_ascii=False, allow_nan=False), encoding='utf8')
             os.chmod(folder, 0o755)
             for name in ['request.json', 'run.duckdb']:
-                os.chmod(folder / name, 0o444)
+                if (folder / name).exists():
+                    os.chmod(folder / name, 0o444)
             env = {'PATH': os.environ.get('PATH', ''), 'PYTHONPATH': str(ROOT), 'PYTHONIOENCODING': 'utf-8',
                    'HOME': work, 'TMPDIR': work, 'PYTHONDONTWRITEBYTECODE': '1'}
             # Docker client needs its context configuration, not forwarded into the container.

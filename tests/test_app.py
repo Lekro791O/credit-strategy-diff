@@ -72,7 +72,8 @@ def test_facts_and_drilldown():
     assert any(r["DIFF_FLAG"] for r in detail["attributes"])
 
 
-def test_adhoc_check_adds_to_report():
+def test_adhoc_check_adds_to_report(monkeypatch):
+    monkeypatch.setenv("CSD_TRUST_LOCAL_CODE", "1")
     rid = _wait_done(_make_run()["id"])["id"]
     code = '''
 def run(mart, params):
@@ -109,11 +110,12 @@ def test_llm_graceful_without_config():
 
 
 def test_multiuser_isolation():
-    r1 = client.post("/api/configs", json={"name": "cfg-a"}, headers={"X-User-Id": "u1"})
+    first, second = TestClient(app), TestClient(app)
+    r1 = first.post("/api/configs", json={"name": "cfg-a", "dataset": "demo://synthetic"}, headers={"X-User-Id": "u1"})
     assert r1.status_code == 200
-    cfgs_u2 = client.get("/api/configs", headers={"X-User-Id": "u2"}).json()["configs"]
+    cfgs_u2 = second.get("/api/configs", headers={"X-User-Id": "u2"}).json()["configs"]
     assert all(c["name"] != "cfg-a" for c in cfgs_u2)
-    mine = client.get("/api/configs", headers={"X-User-Id": "u1"}).json()["configs"]
+    mine = first.get("/api/configs", headers={"X-User-Id": "u1"}).json()["configs"]
     assert any(c["name"] == "cfg-a" for c in mine)
 
 

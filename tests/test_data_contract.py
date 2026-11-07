@@ -72,7 +72,8 @@ def wait(client,rid):
 
 def test_api_quality_and_custom_fact_procedure():
     config.ensure_dirs()
-    user='data-contract-test'
+    client=TestClient(app)
+    user=client.get('/api/session').json()['user_id']
     workspace=config.WORKSPACE_DIR/user
     workspace.mkdir(exist_ok=True)
     path=workspace/'only_decisions.py'
@@ -80,7 +81,6 @@ def test_api_quality_and_custom_fact_procedure():
     path.write_text("from pipeline import aggregate\ndef run(rows):\n    return [r for r in aggregate(rows) if r['KEY']=='decision']\nPROCEDURE={'stage':'aggregate','entrypoint':run}\n")
     (workspace/'custom_normalize.py').write_text("from pipeline import normalize\ndef run(document, **kw):\n    return [r for r in normalize(document, **kw) if r['PATH'] != 'characteristics.score_equ']\nPROCEDURE={'stage':'normalize','entrypoint':run}\n")
     (workspace/'custom_compare.py').write_text("from pipeline import compare\ndef run(before, after):\n    assert not any(r['PATH']=='characteristics.score_equ' for r in before+after)\n    return compare(before, after)\nPROCEDURE={'stage':'compare','entrypoint':run}\n")
-    client=TestClient(app)
     cfg={'dataset':str(ROOT/'task/samples'),'name':'real JSON quality', 'llm_opinion':False,
          'facts':{'kind':'workspace','name':'only_decisions'},
          'normalize':{'kind':'workspace','name':'custom_normalize'},
@@ -98,7 +98,7 @@ def test_api_quality_and_custom_fact_procedure():
         assert run['quality']['eligible_apps']==4
         attrs=client.get(f'/api/runs/{rid}/apps/I32554355').json()['attributes']
         assert not any(row['PATH']=='characteristics.score_equ' for row in attrs)
-        assert run['stages'][1]['code_ref']=='workspace:custom_compare'
+        assert next(s for s in run['stages'] if s['name']=='compare')['code_ref']=='workspace:custom_compare'
         assert all(f['KEY']=='decision' for f in run['fact_rows'])
         pivot=client.post(f'/api/runs/{rid}/pivot',json={
             'dimensions':['key','source'],'column_dimension':'source'}).json()
@@ -116,9 +116,10 @@ def test_settings_validation_and_unknown_pivot_filter():
     assert client.get('/api/normalization/schema').status_code==200
 
 
-def test_api_exclusions_do_not_pollute_mart():
+def test_api_exclusions_do_not_pollute_mart(monkeypatch):
     with tempfile.TemporaryDirectory(dir=ROOT/'pipeline') as name:
         base=Path(name)
+        monkeypatch.setenv('CSD_DATASET_ROOTS', str(base))
         (base/'BEFORE').mkdir(); (base/'AFTER').mkdir()
         for side in ('BEFORE','AFTER'):
             (base/side/'ok.json').write_text(json.dumps({'appData':{'application_id':'ok'},'decisionResult':{'decision':'APPROVE'}}))

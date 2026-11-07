@@ -1,229 +1,201 @@
-"""Менеджер прогонов: фоновое выполнение, этапы, журнал, персистентность.
-
-Прогон неблокирующий: HTTP-запрос только ставит задачу, выполнение идёт
-в фоне (asyncio.to_thread для синхронного кода), фронт опрашивает статус.
-Состояние сериализуется в data/runs/<id>.json — перезагрузка страницы
-(и перезапуск процесса между этапами) не теряет результат.
-
-Интеграция с подпиской 1 (pipeline/): ожидаемый интерфейс —
-    from pipeline import build_mart
-    rows, segments = build_mart(dataset_dir, normalize_cfg, compare_cfg)
-где rows — список dict по схеме task/docs/СХЕМА_ВИТРИНЫ.md,
-segments — список dict по слою разрезов. Если pipeline ещё не готов
-или датасет demo:// — строим демо-витрину и помечаем это в журнале.
-"""
+"""Single-server run coordinator: atomic state, real stage events, isolated code."""
 from __future__ import annotations
-
+import hashlib
+import inspect
 import json
+import re
 import threading
 import time
 import traceback
 import uuid
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
-
-from . import checks as checks_mod
-from . import config, llm as llm_mod, workspace
-from .demo_data import build_demo
-from .facts import change_type_ru, fact_rows
-from .mart import DuckMart, SQLiteMart
+from . import config, checks, llm, workspace
+from .mart import DuckMart
 from .models import Run, RunConfig, RunSummary, Stage
+from .persistence import atomic_write
 
-_STAGES = ["normalize", "compare", "facts", "checks", "llm"]
-_STAGE_TITLES = {
-    "normalize": "Нормализация ответов в базовый формат",
-    "compare": "Сопоставление срезов и сравнение",
-    "facts": "Подготовка фактов counts для отчёта",
-    "checks": "Исполнение автоматических проверок",
-    "llm": "Мнение языковой модели",
-}
+TITLES = {'prepare': 'Подготовка входов и выбранных скриптов', 'normalize': 'Нормализация ответов', 'compare': 'Сопоставление срезов',
+          'facts': 'Подготовка фактов counts', 'store': 'Сохранение DuckDB',
+          'checks': 'Исполнение проверок', 'llm': 'Мнение языковой модели'}
 
 
 class RunManager:
-    def __init__(self) -> None:
+    def __init__(self):
         config.ensure_dirs()
+        self._lock = threading.RLock()
+        self._active = set()
+        self._adhoc = set()
+        self._pool = ThreadPoolExecutor(max_workers=int(os.environ.get('CSD_RUN_WORKERS', '2')), thread_name_prefix='csd-run')
 
-    # ---------- persistence ----------
+    def _run_path(self, run_id):
+        if not re.fullmatch(r'[a-f0-9]{12}', run_id):
+            raise FileNotFoundError('Invalid run ID')
+        return config.RUNS_DIR / (run_id + '.json')
 
-    def _run_path(self, run_id: str) -> Path:
-        return config.RUNS_DIR / f"{run_id}.json"
+    def _mart_path(self, run_id):
+        self._run_path(run_id)
+        return config.MART_DIR / (run_id + '.duckdb')
 
-    def _mart_path(self, run_id: str) -> Path:
-        return config.MART_DIR / f"{run_id}.sqlite"
+    def save(self, run):
+        with self._lock:
+            atomic_write(self._run_path(run.id), run.model_dump_json())
 
-    def save(self, run: Run) -> None:
-        self._run_path(run.id).write_text(
-            run.model_dump_json(), encoding="utf-8")
+    def load(self, run_id):
+        return Run.model_validate_json(self._run_path(run_id).read_text(encoding='utf8'))
 
-    def load(self, run_id: str) -> Run:
-        return Run.model_validate_json(self._run_path(run_id).read_text("utf-8"))
-
-    def list_runs(self, user: str | None = None) -> list[Run]:
-        runs = []
-        for f in sorted(config.RUNS_DIR.glob("*.json"), reverse=True):
+    def list_runs(self, user=None):
+        result = []
+        for path in config.RUNS_DIR.glob('*.json'):
             try:
-                r = Run.model_validate_json(f.read_text("utf-8"))
-            except Exception:
+                run = self.load(path.stem)
+                if user is None or run.config.user == user:
+                    result.append(run)
+            except (ValueError, OSError):
                 continue
-            if user and r.config.user != user:
-                continue
-            runs.append(r)
-        return runs
+        return sorted(result, key=lambda r: r.created, reverse=True)
 
-    # ---------- конфигурации ----------
+    def recover_interrupted(self):
+        for run in self.list_runs():
+            if run.status in ('pending', 'running') and run.id not in self._active:
+                run.status = 'error'
+                run.error = 'SERVER_RESTARTED: запуск прерван перезапуском сервера; используйте повтор'
+                self._fail_stages(run)
+                self.save(run)
 
-    def _configs_path(self, user: str) -> Path:
-        return config.DATA_DIR / f"configs-{user}.json"
+    def _configs_path(self, user):
+        workspace._user_dir(user)  # validate identifier
+        return config.DATA_DIR / ('configs-' + user + '.json')
 
-    def list_configs(self, user: str) -> list[dict[str, Any]]:
-        p = self._configs_path(user)
-        return json.loads(p.read_text("utf-8")) if p.exists() else []
+    def list_configs(self, user):
+        path = self._configs_path(user)
+        return json.loads(path.read_text(encoding='utf8')) if path.exists() else []
 
-    def save_config(self, user: str, cfg: dict[str, Any]) -> None:
-        cfgs = self.list_configs(user)
-        cfg = {**cfg, "user": user}
-        cfgs = [c for c in cfgs if c.get("name") != cfg.get("name")]
-        cfgs.append(cfg)
-        self._configs_path(user).write_text(
-            json.dumps(cfgs, ensure_ascii=False, indent=1), encoding="utf-8")
+    def load_config(self, user, name):
+        match = next((c for c in self.list_configs(user) if c['name'] == name), None)
+        if match is None: raise FileNotFoundError('Configuration not found')
+        return RunConfig.model_validate(match)
 
-    def delete_config(self, user: str, name: str) -> None:
-        cfgs = [c for c in self.list_configs(user) if c.get("name") != name]
-        self._configs_path(user).write_text(
-            json.dumps(cfgs, ensure_ascii=False, indent=1), encoding="utf-8")
+    def save_config(self, user, cfg):
+        cfg = RunConfig.model_validate(dict(cfg, user=user)).model_dump()
+        with self._lock:
+            rows = [r for r in self.list_configs(user) if r['name'] != cfg['name']]
+            atomic_write(self._configs_path(user), json.dumps(rows + [cfg], ensure_ascii=False))
+        return cfg
 
-    # ---------- запуск ----------
+    def delete_config(self, user, name):
+        with self._lock:
+            self.load_config(user, name)
+            rows = [r for r in self.list_configs(user) if r['name'] != name]
+            atomic_write(self._configs_path(user), json.dumps(rows, ensure_ascii=False))
 
-    def create(self, cfg: RunConfig) -> Run:
+    def create(self, cfg):
         run = Run(id=uuid.uuid4().hex[:12], config=cfg)
-        run.stages = [Stage(name=n, title=_STAGE_TITLES[n]) for n in _STAGES
-                      if not (n == "llm" and not cfg.llm_opinion)]
+        names = [n for n in cfg.stage_order if n != 'llm' or cfg.llm_opinion]
+        names.insert(names.index('facts') + 1, 'store')
+        names.insert(0, 'prepare')
+        run.stages = [Stage(name=n, title=TITLES[n]) for n in names]
         self.save(run)
         return run
 
-    def start(self, run_id: str) -> None:
-        """Фоновый запуск в потоке: HTTP-запрос не ждёт завершения прогона."""
-        threading.Thread(target=self._run_guarded, args=(run_id,),
-                         daemon=True).start()
+    def repeat(self, run_id):
+        old = self.load(run_id)
+        run = self.create(old.config.model_copy(deep=True))
+        run.rerun_of = old.id
+        self.save(run)
+        return run
 
-    def _run_guarded(self, run_id: str) -> None:
+    def start(self, run_id):
+        with self._lock:
+            if run_id in self._active or self.load(run_id).status != 'pending':
+                raise ValueError('Run already started; create a repeat instead')
+            self._active.add(run_id)
+        self._pool.submit(self._run_guarded, run_id)
+
+    def _fail_stages(self, run):
+        active = [s for s in run.stages if s.status == 'running']
+        if not active:
+            active = [s for s in run.stages if s.status == 'pending'][:1]
+        for s in active:
+            s.status, s.finished, s.error = 'error', time.time(), run.error.splitlines()[-1]
+            if s.started is not None: s.duration_seconds = s.finished - s.started
+        for s in run.stages:
+            if s.status == 'pending':
+                s.status, s.message = 'skipped', 'Не выполнялся из-за ошибки предыдущего этапа'
+
+    def _run_guarded(self, run_id):
         try:
             self._run_sync(run_id)
         except Exception:
             run = self.load(run_id)
-            run.status = "error"
-            run.error = traceback.format_exc(limit=5)
-            for st in run.stages:
-                if st.status == "running":
-                    st.status = "error"
+            run.status, run.error = 'error', traceback.format_exc(limit=6)
+            self._fail_stages(run)
             self.save(run)
+        finally:
+            with self._lock: self._active.discard(run_id)
 
-    def _run_sync(self, run_id: str) -> None:
+    def _run_sync(self, run_id):
         run = self.load(run_id)
-        run.status = "running"
+        if run.status != 'pending': raise ValueError('Run is not pending')
+        run.status = 'running'
         self.save(run)
         self._run_body(run_id)
 
-    def _stage_begin(self, run: Run, name: str, code_ref: str,
-                     code_snapshot: str) -> None:
-        st = next(s for s in run.stages if s.name == name)
-        st.status, st.started = "running", time.time()
-        st.code_ref, st.code_snapshot = code_ref, code_snapshot
+    def _event(self, run_id, event):
+        run = self.load(run_id)
+        stage = next(s for s in run.stages if s.name == event['stage'])
+        status = event['status']
+        if status == 'start':
+            stage.status, stage.started = 'running', time.time()
+            stage.code_ref = event.get('code_ref', 'pipeline:' + stage.name)
+            stage.code_snapshot = event.get('code_snapshot', '')
+            stage.code_sha256 = hashlib.sha256(stage.code_snapshot.encode()).hexdigest()
+            stage.total = event.get('total')
+        elif status == 'progress':
+            stage.completed, stage.total = event['completed'], event['total']
+        elif status == 'finish':
+            stage.status, stage.finished = 'done', time.time()
+            stage.duration_seconds = stage.finished - stage.started
+            if stage.total is not None: stage.completed = stage.total
+            stage.message = event.get('message', f"Обработано: {event.get('eligible', event.get('facts', ''))}")
         self.save(run)
 
-    def _stage_end(self, run: Run, name: str, message: str = "") -> None:
-        st = next(s for s in run.stages if s.name == name)
-        st.status, st.finished = "done", time.time()
-        st.message = message
-        self.save(run)
+    def _begin(self, run_id, stage, ref, snapshot, total=None):
+        self._event(run_id, dict(stage=stage, status='start', code_ref=ref, code_snapshot=snapshot, total=total))
 
-    def _run_body(self, run_id: str) -> None:
-        run = self.load(run_id)
-        cfg = run.config
-        mart_path = self._mart_path(run_id)
-        if mart_path.exists():
-            mart_path.unlink()
-
-        # The pipeline emits stage events while each procedure is actually running.
-        def pipeline_event(event):
-            stage = event['stage']
-            current = self.load(run_id)
-            if event['status'] == 'start':
-                self._stage_begin(current, stage, event.get('code_ref', 'pipeline:' + stage), event.get('code_snapshot', ''))
-            elif event['status'] == 'finish':
-                if stage == 'facts':
-                    message = f"Подготовлено групп фактов: {event.get('facts', 0)}"
-                else:
-                    message = f"Корректных пар: {event.get('eligible', 0)}"
-                self._stage_end(current, stage, message)
-        result = self._build_dataset(cfg, event=pipeline_event)
-        rows, segments = result['comparison'], result['segments']
-        run = self.load(run_id)
-        run.quality, run.diagnostics = result['quality'], result['diagnostics']
-        run.fact_rows, run.segment_details = result['facts'], segments
-        self.save(run)
-        mart = self._make_mart(run_id)
-        mart.load(rows, segments)
-        (config.RUNS_DIR / f"{run_id}.backend").write_text(
-            "duck" if isinstance(mart, DuckMart) else "sqlite")
-
-        # --- этап 4: проверки ---
-        run = self.load(run_id)
-        code_refs = "\n".join(f"• {c.source.kind}:{c.source.name}" for c in cfg.checks)
-        self._stage_begin(run, "checks", "см. конфигурацию прогона", code_refs)
-        if isinstance(mart, DuckMart):
-            check_rows, errors, run_backend = self._run_checks_isolated(mart, cfg)
-        else:
-            specs = [c.model_dump() for c in cfg.checks]
-            check_rows, errors = checks_mod.run_checks(mart, specs, cfg.user)
-            run_backend = "в процессе приложения"
-        run = self.load(run_id)
-        run.check_rows = check_rows
-        fails = sum(1 for r in check_rows if r.get("RESULT") == "FAIL")
-        msg = f"{len(check_rows)} строк, {fails} FAIL · исполнение: {run_backend}"
-        if errors:
-            msg += f", ошибок исполнения: {len(errors)}"
-        self._stage_end(run, "checks", msg)
-
-        # --- итог ---
-        run = self.load(run_id)
-        run.summary = RunSummary(**mart.decision_stats())
-        run.status = "done"
-        self.save(run)
-        mart.close()
-
-        # --- этап 5: ИИ-мнение (не влияет на статус прогона) ---
-        if cfg.llm_opinion:
-            run = self.load(run_id)
-            self._stage_begin(run, "llm", "api/llm.py", "")
-            mart2 = self.open_mart(run_id)
-            opinion = llm_mod.ask_llm(llm_mod.build_summary(mart2, run.check_rows))
-            mart2.close()
-            run = self.load(run_id)
-            run.llm = opinion
-            if opinion.get("status") == "ok":
-                self._stage_end(run, "llm", f"модель {opinion.get('model', '?')} ответила")
-            else:
-                st = next(s for s in run.stages if s.name == "llm")
-                st.status = "skipped"
-                st.message = ("модель не настроена — задайте CSD_LLM_API_KEY, "
-                              "CSD_LLM_BASE_URL и CSD_LLM_MODEL (см. README)")
-                st.finished = time.time()
-                self.save(run)
+    def _end(self, run_id, stage, message):
+        self._event(run_id, dict(stage=stage, status='finish', message=message))
 
     def _build_dataset(self, cfg, event=None):
         from pipeline import build_dataset
         from .procedures import resolve_procedure
         def resolver(spec, stage, default):
-            return resolve_procedure(spec, stage, default, user=cfg.user,
-                                     settings=cfg.normalize.settings)
+            fn = resolve_procedure(spec, stage, default, user=cfg.user, settings=cfg.normalize.settings)
+            if stage != 'compare' or event is None:
+                return fn
+            def measured(*args, **kwargs):
+                try:
+                    return list(fn(*args, **kwargs))
+                finally:
+                    measured.completed += 1
+                    event(dict(stage='compare', status='progress', completed=measured.completed, total=compare_total[0]))
+            measured.completed = 0
+            measured.origin = getattr(fn, 'origin', fn.__module__ + ':' + fn.__name__)
+            measured.code_snapshot = getattr(fn, 'code_snapshot', None) or inspect.getsource(fn)
+            return measured
+        compare_total = [0]
+        def events(e):
+            if e['stage'] == 'compare' and e['status'] == 'start':
+                compare_total[0] = e.get('total', 0)
+            if event: event(e)
         def process(path):
             return build_dataset(path, cfg.normalize.model_dump(), cfg.compare.model_dump(),
-                                 cfg.facts.model_dump(), event=event, resolver=resolver,
+                                 cfg.facts.model_dump(), event=events, resolver=resolver,
                                  expected_app_ids=cfg.expected_app_ids)
         if not cfg.dataset.startswith('demo://'):
             return process(cfg.dataset)
-        # Demo is a real JSON input to the same eligibility/normalization pipeline.
+        if cfg.dataset != config.DEMO_DATASET: raise ValueError('Unknown demo dataset')
         import tempfile
         from .demo_data import demo_documents
         with tempfile.TemporaryDirectory(dir=config.DATA_DIR, prefix='demo-input-') as name:
@@ -231,57 +203,118 @@ class RunManager:
             (root/'BEFORE').mkdir(); (root/'AFTER').mkdir()
             for app_id, before, after in demo_documents():
                 for source, document in [('BEFORE', before), ('AFTER', after)]:
-                    (root/source/(app_id+'.json')).write_text(json.dumps(document), encoding='utf-8')
+                    (root/source/(app_id+'.json')).write_text(json.dumps(document), encoding='utf8')
             return process(root)
 
-    # ---------- доступ к витрине готового прогона ----------
-
-    def _make_mart(self, run_id: str):
-        """DuckDB-хранилище подписки 2, если стек доступен на этой машине;
-        иначе встроенный SQLiteMart. (mart.store требует fcntl — на Windows
-        импорт падает, и приложение честно работает на фолбэке.)"""
-        duck = DuckMart(self._mart_path(run_id).with_suffix(".duckdb"))
-        try:
-            duck.probe()
-            return duck
-        except Exception:
-            return SQLiteMart(self._mart_path(run_id))
-
-    def _check_path(self, spec, user: str) -> str:
-        src = spec.source
-        if src.kind == "workspace":
-            return str(config.WORKSPACE_DIR / user / f"{src.name}.py")
-        if src.kind == "file":
-            return src.name
-        return str(config.BUILTIN_CHECKS_DIR / src.name)
-
-    def _run_checks_isolated(self, mart: DuckMart, cfg: RunConfig):
-        """Проверки подписки 2: отдельный процесс на проверку, снапшот
-        витрины, таймаут, валидация строк и APP_IDS."""
-        from checkrunner import CheckRunner, CheckSpec
-        specs = [CheckSpec(path=self._check_path(c, cfg.user),
-                           params=dict(c.params))
-                 for c in cfg.checks if c.enabled]
-        runner = CheckRunner(backend="subprocess", trusted=True, timeout=120)
-        report = runner.run(store=mart._ensure_store(), run_id=DuckMart.RUN_ID,
-                            checks=specs)
-        rows = []
-        for execution in report['executions']:
-            start, count = execution.get('row_start', 0), execution.get('row_count', 0)
-            rows.extend(dict(row, _check_id=execution.get('check_id', '?'),
-                             _ref=execution.get('origin', ''))
-                        for row in report['rows'][start:start+count])
-        errors = [e for e in report["executions"] if e["status"] != "COMPLETED"]
-        return rows, errors, "изолированный процесс (checkrunner/)"
-
-    def open_mart(self, run_id: str):
-        marker = config.RUNS_DIR / f"{run_id}.backend"
-        duck_path = self._mart_path(run_id).with_suffix(".duckdb")
-        backend = marker.read_text().strip() if marker.exists() else (
-            "duck" if duck_path.exists() else "sqlite")
-        if backend == "duck":
-            return DuckMart(duck_path)
-        mart = SQLiteMart()
-        mart.path = self._mart_path(run_id)
-        mart.reopen()
+    def _make_mart(self, run_id):
+        # A broken DuckDB dependency is a visible run failure, never unsafe exec fallback.
+        mart = DuckMart(self._mart_path(run_id))
+        mart.probe()
         return mart
+
+    def _run_body(self, run_id):
+        cfg = self.load(run_id).config
+        self._begin(run_id, 'prepare', 'api.runs:RunManager._build_dataset', inspect.getsource(self._build_dataset))
+        def pipeline_event(e):
+            if e['stage'] == 'normalize' and e['status'] == 'start':
+                self._end(run_id, 'prepare', 'Входы найдены; выбранные процедуры разрешены')
+            self._event(run_id, e)
+        result = self._build_dataset(cfg, event=pipeline_event)
+        run = self.load(run_id)
+        run.quality, run.diagnostics = result['quality'], result['diagnostics']
+        run.fact_rows, run.segment_details = result['facts'], result['segments']
+        self.save(run)
+        from mart import MartStore
+        self._begin(run_id, 'store', 'mart.store:MartStore.save_run', inspect.getsource(MartStore.save_run))
+        mart = self._make_mart(run_id)
+        try:
+            mart.load(result['comparison'], result['segments'])
+            run = self.load(run_id)
+            run.summary = RunSummary(**mart.decision_stats())
+            self.save(run)
+            self._end(run_id, 'store', f"DuckDB: {len(result['comparison'])} атрибутов, {len(result['segments'])} заявок")
+            for stage in cfg.stage_order[3:]:
+                if stage == 'checks':
+                    self._execute_checks(run_id, mart)
+                elif stage == 'llm' and cfg.llm_opinion:
+                    self._execute_llm(run_id, mart)
+            run = self.load(run_id)
+            run.status = 'done'
+            self.save(run)
+        finally:
+            mart.close()
+
+    def _execute_checks(self, run_id, mart):
+        run = self.load(run_id)
+        prepared = checks.prepare([c.model_dump() for c in run.config.checks], run.config.user)
+        snapshot = json.dumps([{k: i.get(k) for k in ('origin', 'code', 'params', 'diagnostic')} for i in prepared], ensure_ascii=False)
+        self._begin(run_id, 'checks', 'checkrunner:CHECK', snapshot, total=len(prepared))
+        def event(e):
+            if e['status'] != 'RUNNING':
+                self._event(run_id, dict(stage='checks', status='progress', completed=e['index'] + 1, total=len(prepared)))
+        report = checks.execute(mart, prepared, on_event=event)
+        self._save_report(run_id, report, append=False)
+        count = len([e for e in report['executions'] if e['status'] != 'COMPLETED'])
+        self._end(run_id, 'checks', f"{len(report['rows'])} строк, ошибок исполнения: {count}")
+
+    def _save_report(self, run_id, report, append):
+        with self._lock:
+            run = self.load(run_id)
+            if not append:
+                run.check_rows, run.check_executions, run.errors = [], [], []
+            row_offset = len(run.check_rows)
+            run.check_rows.extend(checks.decorated_rows(report))
+            for e in report['executions']:
+                entry = dict(e, index=len(run.check_executions), row_start=e['row_start'] + row_offset)
+                run.check_executions.append(entry)
+                if e['status'] != 'COMPLETED':
+                    run.errors.append(dict(check=e.get('origin', '?'), status=e['status'], error=e.get('diagnostic', {})))
+            run.check_report_status = 'COMPLETED_WITH_ERRORS' if run.errors else 'COMPLETED'
+            self.save(run)
+
+    def try_check(self, run_id, spec):
+        with self._lock:
+            if run_id in self._adhoc: raise RuntimeError('Another check is running for this run')
+            self._adhoc.add(run_id)
+        try:
+            run = self.load(run_id)
+            mart = self.open_mart(run_id)
+            try:
+                prepared = checks.prepare([spec], run.config.user)
+                def event(e):
+                    with self._lock:
+                        current = self.load(run_id)
+                        current.active_check = dict(e)
+                        self.save(current)
+                event(dict(status='RUNNING', source=spec['source'], started=time.time()))
+                report = checks.execute(mart, prepared, on_event=event)
+                self._save_report(run_id, report, append=True)
+                return dict(rows=checks.decorated_rows(report), executions=report['executions'],
+                            errors=[e for e in report['executions'] if e['status'] != 'COMPLETED'], status=report['status'], persisted=True)
+            finally:
+                mart.close()
+        finally:
+            with self._lock: self._adhoc.discard(run_id)
+
+    def _execute_llm(self, run_id, mart):
+        self._begin(run_id, 'llm', 'api.llm', inspect.getsource(llm.build_summary) + '\n' + inspect.getsource(llm.ask_llm))
+        run = self.load(run_id)
+        try:
+            opinion = llm.ask_llm(llm.build_summary(mart, run.check_rows))
+        except Exception as exc:
+            opinion = dict(status='unavailable', reason=f'{type(exc).__name__}: {exc}')
+        run = self.load(run_id)
+        run.llm = opinion
+        self.save(run)
+        self._end(run_id, 'llm', opinion.get('reason', 'Ответ модели получен'))
+        if opinion.get('status') != 'ok':
+            run = self.load(run_id)
+            next(s for s in run.stages if s.name == 'llm').status = 'skipped'
+            self.save(run)
+
+    def open_mart(self, run_id):
+        run = self.load(run_id)
+        if run.status != 'done': raise RuntimeError('RUN_NOT_READY: прогон ещё не завершён успешно')
+        path = self._mart_path(run_id)
+        if not path.is_file(): raise FileNotFoundError('Stored mart is missing')
+        return DuckMart(path)

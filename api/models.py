@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 CHANGE_TYPES = ["SAME", "VALUE_CHANGED", "ATTRIBUTE_NEW", "ATTRIBUTE_LOST"]
 
@@ -17,19 +17,23 @@ CHANGE_TYPES = ["SAME", "VALUE_CHANGED", "ATTRIBUTE_NEW", "ATTRIBUTE_LOST"]
 
 class ProcedureSource(BaseModel):
     """Источник пользовательской процедуры: встроенная / рабочая область / файл."""
-    kind: Literal["builtin", "workspace", "file"] = "builtin"
+    model_config = ConfigDict(extra='forbid')
+    kind: Literal["builtin", "workspace", "file", "code"] = "builtin"
+    code: str | None = Field(default=None, max_length=1048576)
     settings: dict[str, Any] | None = None  # JSON normalization settings v1
     name: str = "default"  # имя встроенной или файла в workspace / на диске
 
 
 class CheckSpec(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     source: ProcedureSource = Field(default_factory=ProcedureSource)
     params: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
 
 
 class RunConfig(BaseModel):
-    name: str = "прогон"
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(default="прогон", min_length=1, max_length=200)
     user: str = "anon"
     expected_app_ids: list[str] | None = None
     dataset: str  # путь к папке прогона либо demo://synthetic
@@ -38,6 +42,19 @@ class RunConfig(BaseModel):
     facts: ProcedureSource = Field(default_factory=ProcedureSource)
     checks: list[CheckSpec] = Field(default_factory=list)
     llm_opinion: bool = True
+    stage_order: list[str] = Field(default_factory=lambda: ['normalize', 'compare', 'facts', 'checks', 'llm'])
+
+    @model_validator(mode='after')
+    def validate_sequence(self):
+        if len(set(self.stage_order)) != len(self.stage_order):
+            raise ValueError('Duplicate stage in stage_order')
+        names = [n for n in self.stage_order if n != 'llm' or self.llm_opinion]
+        required = {'normalize', 'compare', 'facts', 'checks'} | ({'llm'} if self.llm_opinion else set())
+        if len(names) != len(set(names)) or set(names) != required or names[:3] != ['normalize', 'compare', 'facts']:
+            raise ValueError('stage_order requires normalize → compare → facts, then checks and optionally llm, each once')
+        from pipeline import config_from_settings
+        config_from_settings(self.normalize.settings)
+        return self
 
 
 # ---------- ход прогона ----------
@@ -49,6 +66,11 @@ class Stage(BaseModel):
     started: Optional[float] = None
     finished: Optional[float] = None
     message: str = ""
+    error: str = ""
+    completed: int = 0
+    total: int | None = None
+    duration_seconds: float | None = None
+    code_sha256: str = ""
     # откуда взят код этапа и его снапшот — из журнала можно провалиться в код
     code_ref: str = ""
     code_snapshot: str = ""
@@ -72,6 +94,11 @@ class Run(BaseModel):
     check_rows: list[dict[str, Any]] = Field(default_factory=list)
     llm: Optional[dict[str, Any]] = None
     error: str = ""
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    check_executions: list[dict[str, Any]] = Field(default_factory=list)
+    check_report_status: str = "PENDING"
+    rerun_of: str | None = None
+    active_check: dict[str, Any] | None = None
     quality: dict[str, Any] = Field(default_factory=dict)
     diagnostics: list[dict[str, Any]] = Field(default_factory=list)
     fact_rows: list[dict[str, Any]] = Field(default_factory=list)
