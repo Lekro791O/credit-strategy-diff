@@ -1093,7 +1093,7 @@ async function showApp(id, appId) {
 
 // ---------- отчёт проверок ----------
 
-const checksState = { onlyFail: false, hideLow: false };
+const checksState = { filter: "all" };   // all | fail | pass | low
 
 async function renderChecks(id, run) {
   const el = document.getElementById("tab-body");
@@ -1108,21 +1108,24 @@ async function renderChecks(id, run) {
   const nLow = rows.filter(r => r.CONFIDENCE === "LOW").length;
   const sev = r => (r.RESULT === "FAIL" ? (r.CONFIDENCE === "LOW" ? 1 : 0) : 2);
   let view = rows.map((r, i) => ({ r, i }));
-  if (checksState.onlyFail) view = view.filter(x => x.r.RESULT === "FAIL");
-  if (checksState.hideLow) view = view.filter(x => x.r.CONFIDENCE !== "LOW");
+  if (checksState.filter === "fail") view = view.filter(x => x.r.RESULT === "FAIL");
+  if (checksState.filter === "pass") view = view.filter(x => x.r.RESULT === "PASS");
+  if (checksState.filter === "low") view = view.filter(x => x.r.CONFIDENCE === "LOW");
   view.sort((a, b) => sev(a.r) - sev(b.r) || (b.r.CNT || 0) - (a.r.CNT || 0));
 
   const cols = [["LABEL", "проверка"], ["SOURCE", "срез"], ["ARGUMENT", "что именно"],
                 ["CNT", "сколько"], ["TOTAL", "из"], ["METRIC", "метрика"],
                 ["RESULT", "итог"], ["CONFIDENCE", "уверенность"]];
+  const cnt = (cls, f, label, title) =>
+    `<span class="counter ${cls} ${checksState.filter === f ? "on" : ""}" data-cb="setChecksFilter:${cbArg(f)}" title="${title}">${label}</span>`;
   el.innerHTML = `<div class="card">
     <p class="hint">Все проверки одной таблицей. «Проблема» — проверка не пройдена; бледные строки — срабатываний мало,
     это сигнал для проверки, а не подтверждённая поломка. Клик по числу в последней колонке — заявки, на которых сработала проверка.</p>
     <div class="counters">
-      <span class="counter pass ${!checksState.onlyFail && !checksState.hideLow ? "on" : ""}" onclick="resetChecksFilter()" title="показать всё">все: ${rows.length}</span>
-      <span class="counter fail ${checksState.onlyFail ? "on" : ""}" onclick="toggleOnlyFail()" title="только непройденные проверки">проблем: ${nFail}</span>
-      <span class="counter pass">в норме: ${nPass}</span>
-      <span class="counter low ${checksState.hideLow ? "on" : ""}" onclick="toggleHideLow()" title="скрыть строки с низкой уверенностью">низкая уверенность: ${nLow}</span>
+      ${cnt("pass", "all", `все: ${rows.length}`, "показать всё")}
+      ${cnt("fail", "fail", `проблем: ${nFail}`, "только непройденные проверки")}
+      ${cnt("pass", "pass", `в норме: ${nPass}`, "только пройденные проверки")}
+      ${cnt("low", "low", `низкая уверенность: ${nLow}`, "только строки с низкой уверенностью — срабатываний мало, это шум, а не поломка")}
     </div>
     ${diags.length ? `<div class="warn">Проверки с ошибками исполнения: ${diags.length}.
       ${diags.map(d => `<br>• <b>${esc(d.check)}</b> (${esc(d.status || "ERROR")}): <code>${esc(JSON.stringify(d.error))}</code>`).join("")}
@@ -1146,9 +1149,7 @@ async function renderChecks(id, run) {
   });
 }
 
-function toggleOnlyFail() { checksState.onlyFail = !checksState.onlyFail; refreshChecksTab(); }
-function toggleHideLow() { checksState.hideLow = !checksState.hideLow; refreshChecksTab(); }
-function resetChecksFilter() { checksState.onlyFail = false; checksState.hideLow = false; refreshChecksTab(); }
+function setChecksFilter(f) { checksState.filter = f; refreshChecksTab(); }
 async function refreshChecksTab() {
   const m = location.hash.match(/^#\/runs\/(\w+)/);
   if (m) { const { run } = await api(`/api/runs/${m[1]}`); renderChecks(m[1], run); }
