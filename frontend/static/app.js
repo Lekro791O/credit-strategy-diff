@@ -22,8 +22,12 @@ async function api(path, opts = {}) {
   });
   if (!r.ok) {
     let msg = r.statusText;
-    try { msg = (await r.json()).detail || msg; } catch (_) {}
-    throw new Error(msg);
+    try {
+      const d = await r.json();
+      // FastAPI отдаёт detail объектом {code, message}
+      msg = (d && d.detail && (d.detail.message || d.detail)) || msg;
+    } catch (_) {}
+    throw new Error(typeof msg === "string" ? msg : r.statusText);
   }
   return r.json();
 }
