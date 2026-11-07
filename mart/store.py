@@ -111,7 +111,7 @@ class MartStore:
                     AND a.PATH=z.PATH AND a.ARRAY_KEY=z.ARRAY_KEY AND z.SOURCE='AFTER' ''')
             con.execute('''CREATE OR REPLACE VIEW fact_members AS
                 SELECT a.run_id, a.APP_ID, a.PREFIX, a.CLASS, a.SUFFIX, a.ARRAY_KEY,
-                    a.KEY, a.PATH, d.ADJUSTED_VALUE AS VALUE_ADJUSTED, a.DIFF_FLAG,
+                    a.KEY, a.PATH, d.VALUE, d.ADJUSTED_VALUE AS VALUE_ADJUSTED, a.DIFF_FLAG,
                     CASE d.SOURCE WHEN 'BEFORE' THEN 'BEFORE (MASTER)' ELSE 'AFTER (BETA)' END AS SOURCE,
                     a.CHANGE_TYPE
                 FROM attributes a JOIN datamart d USING (run_id, APP_ID, PATH, ARRAY_KEY)''')
