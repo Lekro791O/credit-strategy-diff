@@ -2,6 +2,8 @@
 
 Ветка: `local/integration-test`. Исходная интеграционная версия: `2aa905a`.
 Изменения ограничены mart/ и checkrunner/, публичные методы и схемы таблиц/представлений сохранены.
+После измерений подтянуты d736005/fe3a15b (новый source_split и NOTES.md); измеряемые
+обработчики facts/drill не менялись. Финальный полный pytest выполнен поверх fe3a15b.
 
 ## Машина и методика
 
@@ -163,8 +165,9 @@ rows/count/app_ids сверены с независимым Python-oracle на �
 
 ## Тесты и воспроизведение
 
-До: **91 passed + 8 subtests**, 1 skipped (Docker). После: **119 passed +
-8 subtests**, 1 skipped (тот же Docker). Предупреждение Starlette/httpx —
+До: **91 passed + 8 subtests**, 1 skipped (Docker). После собственных изменений:
+119 passed + 8 subtests. После обновления интеграционной базы до fe3a15b:
+**120 passed + 8 subtests**, 1 skipped (тот же Docker). Предупреждение Starlette/httpx —
 существующая deprecation зависимостей, не ошибка теста.
 
 ```bash

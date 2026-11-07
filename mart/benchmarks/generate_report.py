@@ -23,7 +23,9 @@ def samples(data,key):
     return ' / '.join(f'{v:.{digits}f}' for v in data['metrics'][key]['seconds'])
 lines=['# Замеры mart/checkrunner для инженерной записки','',
 '''Ветка: `local/integration-test`. Исходная интеграционная версия: `2aa905a`.
-Изменения ограничены mart/ и checkrunner/, публичные методы и схемы таблиц/представлений сохранены.''','',
+Изменения ограничены mart/ и checkrunner/, публичные методы и схемы таблиц/представлений сохранены.
+После измерений подтянуты d736005/fe3a15b (новый source_split и NOTES.md); измеряемые
+обработчики facts/drill не менялись. Финальный полный pytest выполнен поверх fe3a15b.''','',
 '## Машина и методика','',
 '''7 ноября 2026: **Apple M4, 10 логических CPU, 24 GiB RAM, macOS 27.0.1 arm64,
 Python 3.13.4, DuckDB 2.0.0**. DuckDB использует 2 потока, uvicorn — один процесс.
@@ -149,8 +151,9 @@ rows/count/app_ids сверены с независимым Python-oracle на �
   опциональный Docker integration test пропущен.''',
 '',
 '## Тесты и воспроизведение','',
-'''До: **91 passed + 8 subtests**, 1 skipped (Docker). После: **119 passed +
-8 subtests**, 1 skipped (тот же Docker). Предупреждение Starlette/httpx —
+'''До: **91 passed + 8 subtests**, 1 skipped (Docker). После собственных изменений:
+119 passed + 8 subtests. После обновления интеграционной базы до fe3a15b:
+**120 passed + 8 subtests**, 1 skipped (тот же Docker). Предупреждение Starlette/httpx —
 существующая deprecation зависимостей, не ошибка теста.''','',
 '```bash',
 'python -m pip install -r api/requirements.txt',
