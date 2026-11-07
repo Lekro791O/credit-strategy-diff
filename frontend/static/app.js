@@ -90,9 +90,13 @@ function statusBadge(s) {
 }
 
 function decisionStamp(d) {
-  if (d === "APPROVE") return `<span class="stamp ok" title="APPROVE">одобрено</span>`;
-  if (d === "REJECT") return `<span class="stamp bad" title="REJECT">отклонено</span>`;
-  return `<span class="stamp neutral">${esc(d || "—")}</span>`;
+  const ic = {
+    ok: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.6l3 3L12.8 5"/></svg>',
+    bad: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>',
+  };
+  if (d === "APPROVE") return `<span class="verdict ok" title="APPROVE">${ic.ok}одобрено</span>`;
+  if (d === "REJECT") return `<span class="verdict bad" title="REJECT">${ic.bad}отклонено</span>`;
+  return `<span class="verdict neutral">${esc(d || "—")}</span>`;
 }
 
 function emptyState(title, sub) {
@@ -623,14 +627,40 @@ async function renderRun(id, tab = "pivot") {
   catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
 
   if (run.status === "running" || run.status === "pending") {
-    const done = run.stages.filter(s => s.status === "done").length;
-    const pct = Math.round(done / run.stages.length * 100);
+    // процент готовности: вес этапа = 1, внутри «compare» есть точный прогресс
+    const stages = run.stages;
+    let units = 0, curFrac = 0, curName = "";
+    for (const s of stages) {
+      if (s.status === "done" || s.status === "skipped") { units += 1; continue; }
+      if (s.status === "running") {
+        curName = s.title;
+        if (s.total) curFrac = Math.min(1, (s.completed || 0) / s.total);
+      }
+    }
+    const pct = Math.min(99, Math.round((units + curFrac) / stages.length * 100));
     $view.innerHTML = `
-      <div class="card">
+      <div class="card run-wrap">
+        <div class="run-bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+        <div class="run-inner">
         <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}</h3>
+        <div class="ouro-wrap">
+          <svg class="ouro" viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <linearGradient id="ouro-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#7c3aed"/>
+              </linearGradient>
+            </defs>
+            <circle class="track" cx="50" cy="50" r="42" pathLength="100" fill="none" stroke-width="7"/>
+            <circle class="snake" cx="50" cy="50" r="42" pathLength="100" fill="none" stroke-width="7" stroke-linecap="round"/>
+          </svg>
+          <div class="ouro-info">
+            <div class="pct">${pct}%</div>
+            <div class="what">вычисления идут — сейчас: ${esc(curName || "подготовка")}. Можно закрыть страницу: прогон продолжится, результат сохранится.</div>
+          </div>
+        </div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
-        <p class="hint">Этапы обработки (${done} из ${run.stages.length}) — по завершении появится ссылка на отчёт:</p>
-        ${run.stages.map(s => `
+        <p class="hint">Этапы обработки (${units} из ${stages.length}):</p>
+        ${stages.map(s => `
           <div class="stage">
             ${stageIcon(s.name)}
             <span class="st">${statusBadge(s.status)}</span>
@@ -639,9 +669,7 @@ async function renderRun(id, tab = "pivot") {
             <span class="hint">${esc(fmtDur(s.started, s.finished))}</span>
             ${s.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполняется на этом этапе" onclick='showCode(${JSON.stringify(s.title)}, ${JSON.stringify(s.code_snapshot || s.code_ref)})'>показать код этапа</button>` : ""}
           </div>`).join("")}
-        <div class="skeleton" style="width:70%"></div>
-        <div class="skeleton" style="width:45%"></div>
-        <p class="hint">Можно закрыть страницу — прогон продолжится, результат сохранится.</p>
+        </div>
       </div>`;
     pollTimer = setTimeout(() => renderRun(id), 1500);
     return;
@@ -682,6 +710,7 @@ async function renderRun(id, tab = "pivot") {
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:end">
         <a href="/api/runs/${id}/checks/export.html" target="_blank"><button class="ghost">открыть отчёт проверок в новой вкладке</button></a>
         <a href="/api/runs/${id}/checks/export.html" download="checks-${id}.html"><button class="ghost">скачать отчёт проверок (HTML)</button></a>
+        <a href="/api/runs/${id}/mart.csv" download="mart-${id}.csv"><button class="ghost" title="витрина сравнения по контракту docs/СХЕМА_ВИТРИНЫ.md — одна строка = атрибут заявки, до/после, признак различия">скачать витрину сравнения (CSV)</button></a>
         <button class="ghost" onclick="navigator.clipboard.writeText(location.origin + '/#/runs/${id}').then(()=>toast('Ссылка на сводный отчёт скопирована'))">скопировать ссылку на сводный отчёт</button>
         <button class="ghost" onclick='createRun(false, ${JSON.stringify(run.config).replace(/'/g, "&#39;")})' title="запустить ещё раз с тем же набором проверок и параметров">повторить прогон</button>
         <div style="margin-left:auto"><label style="margin:0">найти заявку по ID — Enter (<kbd>/</kbd>)</label>
@@ -949,8 +978,11 @@ async function loadPivot(id) {
     rowTotals.push(rt); grand += rt;
   }
   const heat = v => {
-    const a = 0.06 + 0.44 * (v / maxVal);
-    return `background: rgba(232, 62, 140, ${a.toFixed(3)});`;
+    // идея из прототипа организаторов: малые значения — мягкая подсветка,
+    // остальное — сдержанная шкала насыщенности
+    if (v > 0 && v < 10) return "background: var(--soft-hl);";
+    const a = 0.03 + 0.22 * (v / maxVal);
+    return `background: rgba(37, 99, 235, ${a.toFixed(3)});`;
   };
   const colTitle = c => colDim === "change_type" ? ctRu(c) : (DIM_RU[colDim] || colDim);
   lastPivot = { rowDims, colDim, cols, groups: [...groups.values()], colTotals, rowTotals, grand };

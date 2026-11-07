@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import checks as checks_mod
@@ -451,6 +451,33 @@ def export_checks(run_id: str, request: Request) -> HTMLResponse:
     resp = HTMLResponse(render_checks_html(run, url))
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     return resp
+
+
+@app.get("/api/runs/{run_id}/mart.csv")
+def export_mart(run_id: str) -> Response:
+    """Витрина сравнения (comparison) одним CSV — тот формат, что в docs/СХЕМА_ВИТРИНЫ.md."""
+    import csv as csv_mod
+    import io
+    run = manager.load(run_id)
+    if run.status != 'done':
+        raise HTTPException(409, 'RUN_NOT_READY: витрина появится после завершения прогона')
+    cols = ["APP_ID", "PREFIX", "CLASS", "SUFFIX", "ARRAY_KEY", "KEY", "PATH",
+            "VALUE_BEFORE", "VALUE_AFTER", "ADJUSTED_BEFORE", "ADJUSTED_AFTER",
+            "DIFF_FLAG", "CHANGE_TYPE"]
+    mart = manager.open_mart(run_id)
+    try:
+        where = f" WHERE {mart.run_clause}" if mart.run_clause else ""
+        rows = mart.query("SELECT " + ", ".join(cols) + " FROM comparison" + where)
+    finally:
+        mart.close()
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM — чтобы Excel открывал UTF-8
+    writer = csv_mod.writer(buf, delimiter=";", lineterminator="\r\n")
+    writer.writerow(cols)
+    for row in rows:
+        writer.writerow([row[c] for c in cols])
+    return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="mart-{run_id}.csv"'})
 
 
 # ---------- ИИ-мнение ----------

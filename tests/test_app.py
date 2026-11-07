@@ -190,3 +190,19 @@ def test_source_split_logic_vs_external():
         assert key in data and data[key]["cnt"] == len(data[key]["app_ids"])
     assert data["logic"]["cnt"] + data["external_only"]["cnt"] + data["both"]["cnt"] \
         == run["summary"]["apps_with_diffs"]
+
+
+def test_mart_csv_export():
+    run = _wait_done(_make_run()["id"])
+    rid = run["id"]
+    r = client.get(f"/api/runs/{rid}/mart.csv")
+    assert r.status_code == 200, r.text[:200]
+    assert r.headers["content-type"].startswith("text/csv")
+    text = r.content.decode("utf-8-sig")
+    header = text.splitlines()[0].split(";")
+    assert header == ["APP_ID", "PREFIX", "CLASS", "SUFFIX", "ARRAY_KEY", "KEY", "PATH",
+                      "VALUE_BEFORE", "VALUE_AFTER", "ADJUSTED_BEFORE", "ADJUSTED_AFTER",
+                      "DIFF_FLAG", "CHANGE_TYPE"]
+    assert len(text.splitlines()) > 100  # витрина демо-прогона
+    busy = client.get(f"/api/runs/{rid}/mart.csv")  # готовый прогон — всё ещё 200
+    assert busy.status_code == 200
