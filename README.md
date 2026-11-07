@@ -181,6 +181,13 @@ export CSD_TRUST_LOCAL_CODE=1
 
 ### Настройка ИИ (опционально)
 
+Публичный корневой сертификат Минцифры для GigaChat поставляется в
+`api/certs/russian_trusted_root_ca.pem` и автоматически используется приложением,
+в том числе в Docker. Устанавливать его в систему не нужно. Источник сертификата:
+[документация GigaChat](https://developers.sber.ru/docs/ru/gigachat/certificates).
+При необходимости локальный файл `data/gigachat-ca.crt` имеет приоритет.
+Ключ авторизации вводится отдельно и не должен попадать в Git.
+
 Форма «Подключить GigaChat» на главной странице (ключ хранится локально в
 `data/gigachat.json`), либо файл `data/llm.env` / переменные окружения
 `CSD_LLM_BASE_URL`, `CSD_LLM_API_KEY`, `CSD_LLM_MODEL` (OpenAI-совместимый
