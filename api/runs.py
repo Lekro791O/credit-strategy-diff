@@ -161,6 +161,15 @@ class RunManager:
             stage.message = event.get('message', f"Обработано: {event.get('eligible', event.get('facts', ''))}")
         self.save(run)
 
+    def _safe_source(self, fn) -> str:
+        """Снапшот кода этапа для журнала. Недоступный/меняющийся на диске
+        исходник (TokenError/OSError) не должен ронять весь прогон."""
+        try:
+            return inspect.getsource(fn)
+        except Exception as exc:
+            name = getattr(fn, '__qualname__', getattr(fn, '__name__', repr(fn)))
+            return f"# исходник {name} временно недоступен: {type(exc).__name__}: {exc}"
+
     def _begin(self, run_id, stage, ref, snapshot, total=None):
         self._event(run_id, dict(stage=stage, status='start', code_ref=ref, code_snapshot=snapshot, total=total))
 
@@ -182,7 +191,7 @@ class RunManager:
                     event(dict(stage='compare', status='progress', completed=measured.completed, total=compare_total[0]))
             measured.completed = 0
             measured.origin = getattr(fn, 'origin', fn.__module__ + ':' + fn.__name__)
-            measured.code_snapshot = getattr(fn, 'code_snapshot', None) or inspect.getsource(fn)
+            measured.code_snapshot = getattr(fn, 'code_snapshot', None) or self._safe_source(fn)
             return measured
         compare_total = [0]
         def events(e):
@@ -214,7 +223,7 @@ class RunManager:
 
     def _run_body(self, run_id):
         cfg = self.load(run_id).config
-        self._begin(run_id, 'prepare', 'api.runs:RunManager._build_dataset', inspect.getsource(self._build_dataset))
+        self._begin(run_id, 'prepare', 'api.runs:RunManager._build_dataset', self._safe_source(self._build_dataset))
         def pipeline_event(e):
             if e['stage'] == 'normalize' and e['status'] == 'start':
                 self._end(run_id, 'prepare', 'Входы найдены; выбранные процедуры разрешены')
@@ -225,7 +234,7 @@ class RunManager:
         run.fact_rows, run.segment_details = result['facts'], result['segments']
         self.save(run)
         from mart import MartStore
-        self._begin(run_id, 'store', 'mart.store:MartStore.save_run', inspect.getsource(MartStore.save_run))
+        self._begin(run_id, 'store', 'mart.store:MartStore.save_run', self._safe_source(MartStore.save_run))
         mart = self._make_mart(run_id)
         try:
             mart.load(result['comparison'], result['segments'])
@@ -297,7 +306,7 @@ class RunManager:
             with self._lock: self._adhoc.discard(run_id)
 
     def _execute_llm(self, run_id, mart):
-        self._begin(run_id, 'llm', 'api.llm', inspect.getsource(llm.build_summary) + '\n' + inspect.getsource(llm.ask_llm))
+        self._begin(run_id, 'llm', 'api.llm', self._safe_source(llm.build_summary) + '\n' + self._safe_source(llm.ask_llm))
         run = self.load(run_id)
         try:
             opinion = llm.ask_llm(llm.build_summary(mart, run.check_rows))
