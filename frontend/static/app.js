@@ -621,11 +621,20 @@ function animateNum(el, target) {
 
 // ---------- прогон: ход и результаты ----------
 
+let visibleRunStages = [];
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-stage-code]");
+  if (!button) return;
+  const stage = visibleRunStages[Number(button.dataset.stageCode)];
+  if (stage) showCode(stage.title, stage.code_snapshot || stage.code_ref || "");
+});
+
 async function renderRun(id, tab = "pivot") {
   let run;
   try { ({ run } = await api(`/api/runs/${id}`)); }
   catch (e) { $view.innerHTML = `<div class="card">Ошибка: ${esc(e.message)}</div>`; return; }
 
+  visibleRunStages = run.stages || [];
   if (run.status === "running" || run.status === "pending") {
     // процент готовности: вес этапа = 1, внутри «compare» есть точный прогресс
     const stages = run.stages;
@@ -660,14 +669,14 @@ async function renderRun(id, tab = "pivot") {
         </div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
         <p class="hint">Этапы обработки (${units} из ${stages.length}):</p>
-        ${stages.map(s => `
+        ${stages.map((s, index) => `
           <div class="stage">
             ${stageIcon(s.name)}
             <span class="st">${statusBadge(s.status)}</span>
             <b>${esc(s.title)}</b>
             <span class="msg">${esc(s.message || (s.status === "running" ? "выполняется…" : ""))}</span>
             <span class="hint">${esc(fmtDur(s.started, s.finished))}</span>
-            ${s.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполняется на этом этапе" onclick='showCode(${JSON.stringify(s.title)}, ${JSON.stringify(s.code_snapshot || s.code_ref)})'>показать код этапа</button>` : ""}
+            ${s.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполняется на этом этапе" data-stage-code="${index}">показать код этапа</button>` : ""}
           </div>`).join("")}
         </div>
       </div>`;
@@ -701,11 +710,11 @@ async function renderRun(id, tab = "pivot") {
           <div class="chips" id="seg-chips"></div></div>
       </div>
       <p class="hint">Этапы обработки (${doneStages} из ${run.stages.length}):</p>
-      ${run.stages.map(sg => `
+      ${run.stages.map((sg, index) => `
         <div class="stage">${stageIcon(sg.name)}<span class="st">${statusBadge(sg.status)}</span>
           <b>${esc(sg.title)}</b><span class="msg">${esc(sg.message)}</span>
           <span class="hint">${esc(fmtDur(sg.started, sg.finished))}</span>
-          ${sg.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполнялся на этом этапе" onclick='showCode(${JSON.stringify(sg.title)}, ${JSON.stringify(sg.code_snapshot || sg.code_ref || "")})'>показать код этапа</button>` : ""}
+          ${sg.code_ref ? `<button class="ghost" style="margin-left:auto" title="показать код, который исполнялся на этом этапе" data-stage-code="${index}">показать код этапа</button>` : ""}
         </div>${sg.error ? `<div class="warn" style="margin:2px 0 6px 34px">${esc(sg.error)}</div>` : ""}`).join("")}
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:end">
         <a href="/api/runs/${id}/checks/export.html" target="_blank"><button class="ghost">открыть отчёт проверок в новой вкладке</button></a>
