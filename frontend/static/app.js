@@ -59,6 +59,22 @@ function fmtDur(a, b) {
   return s < 1 ? `${Math.round(s * 1000)} мс` : `${s.toFixed(1)} с`;
 }
 
+function fmtTotal(a, b) {
+  if (!a || !b) return "";
+  const s = Math.round(b - a);
+  if (s < 60) return `${s} с`;
+  const m = Math.floor(s / 60);
+  return `${m} мин ${s % 60} с`;
+}
+
+function runDuration(run) {
+  const started = run.stages.map(s => s.started).filter(Boolean);
+  const finished = run.stages.map(s => s.finished).filter(Boolean);
+  if (!started.length) return "";
+  const end = finished.length ? Math.max(...finished) : Date.now() / 1000;
+  return fmtTotal(Math.min(...started), end);
+}
+
 // ---------- русские подписи (технический код — в title) ----------
 
 const CHANGE_TYPE_RU = {
@@ -762,7 +778,8 @@ async function renderRun(id, tab = null) {
     <div class="crumbs"><a href="#/runs" title="вернуться к списку прогонов">← Прогоны</a><span>/</span><b>${esc(run.config.name)}</b></div>
     <div class="card">
       <h3 style="margin-top:0">${esc(run.config.name)} ${statusBadge(run.status)}
-        <span class="hint">· ${esc(dsName(run.config.dataset))}</span></h3>
+        <span class="hint">· ${esc(dsName(run.config.dataset))}
+        · ${run.status === "done" ? "занял" : "идёт уже"} <b>${esc(runDuration(run))}</b></span></h3>
       ${run.error ? `<pre class="code">${esc(run.error)}</pre>` : cards}
       <div class="toolbar" id="seg-bar" style="margin-top:6px">
         <div><label>Фильтры разрезов заявки — применяются и к сводной, и к спискам</label>
