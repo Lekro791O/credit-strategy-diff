@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 import json
+from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -108,6 +109,17 @@ def datasets() -> dict[str, Any]:
                 break
     return {"datasets": [{"id": config.DEMO_DATASET, "apps": 300,
                           "requires_pipeline": False}] + found}
+
+
+@app.post("/api/datasets/upload")
+def upload_dataset(file: UploadFile, name: str = "") -> dict[str, Any]:
+    """Загрузка датасета zip-архивом: появится в списке датасетов."""
+    from . import datasets as datasets_mod
+    data = file.file.read()
+    try:
+        return datasets_mod.import_zip(data, name or Path(file.filename or "").stem)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 @app.get("/api/builtin/checks")

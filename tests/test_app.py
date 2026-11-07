@@ -3,6 +3,7 @@
 Запуск из корня репозитория:
     python -m pytest tests/ -q
 """
+import json
 import os
 import tempfile
 
@@ -156,3 +157,26 @@ def test_export_link_not_hardcoded():
     r = client.get(f"/api/runs/{rid}/checks/export.html")
     assert "localhost:8000" not in r.text
     assert "http://testserver/#/runs/" in r.text
+
+
+def test_dataset_upload_zip():
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for side in ("BEFORE", "AFTER"):
+            for i in (1, 2, 3):
+                z.writestr(f"{side}/A{i}.json",
+                           json.dumps({"appData": {"application_id": f"A{i}"},
+                                       "decisionResult": {"decision": "APPROVE" if side == "BEFORE" else "REJECT"}}))
+    r = client.post("/api/datasets/upload", files={"file": ("my-ds.zip", buf.getvalue())})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["apps"] == 3 and data["requires_pipeline"]
+    listed = client.get("/api/datasets").json()["datasets"]
+    assert any(d["id"] == data["id"] and d["apps"] == 3 for d in listed)
+
+
+def test_dataset_upload_rejects_garbage():
+    r = client.post("/api/datasets/upload", files={"file": ("bad.zip", b"not a zip")})
+    assert r.status_code == 422

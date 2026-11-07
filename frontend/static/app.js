@@ -383,7 +383,12 @@ async function renderRuns() {
       <label>Название прогона — чтобы отличать в списке</label>
       <input id="run-name" value="прогон ${new Date().toLocaleString("ru")}" size="40">
       <label>Данные для сравнения</label>
-      <select id="run-dataset">${dsOpts}</select>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="run-dataset" style="flex:1;min-width:220px">${dsOpts}</select>
+        <button class="ghost" id="ds-upload-btn" title="Загрузить свой датасет zip-архивом: внутри папки BEFORE/AFTER или RESULTS/BEFORE_MASTER/AFTER_BETA с JSON-ответами">+ добавить файл</button>
+        <input type="file" id="ds-file" accept=".zip" style="display:none">
+      </div>
+      <p class="hint" id="ds-upload-hint" style="display:none"></p>
       <label>Последовательность процедур — порядок этапов обработки</label>
       <div id="proc-list">${procPanelHtml()}</div>
       ${normSettingsHtml()}
@@ -432,6 +437,42 @@ async function renderRuns() {
       </div>
     </div>
   </div>`;
+  // загрузка датасета файлом
+  const fileInput = document.getElementById("ds-file");
+  document.getElementById("ds-upload-btn").onclick = () => fileInput.click();
+  fileInput.onchange = () => uploadDataset(fileInput);
+}
+
+async function uploadDataset(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const hint = document.getElementById("ds-upload-hint");
+  hint.style.display = "";
+  const setHint = t => { hint.textContent = t; };
+  setHint(`Загружаю «${file.name}»…`);
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("name", file.name.replace(/\.zip$/i, ""));
+    const resp = await fetch("/api/datasets/upload", {
+      method: "POST", headers: { "X-User-Id": user() }, body: form,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail?.message || data.detail || "ошибка сервера");
+    setHint(`Датасет добавлен: ${data.apps} заявок (после — ${data.after_apps}). Выбран в списке.`);
+    toast(`Датасет загружен: ${data.apps} заявок`);
+    const sel = document.getElementById("run-dataset");
+    const opt = document.createElement("option");
+    opt.value = data.id;
+    opt.textContent = `Загруженный файл — ${data.apps} заявок`;
+    opt.selected = true;
+    sel.appendChild(opt);
+  } catch (e) {
+    setHint("Не получилось: " + e.message);
+    toast("Ошибка загрузки датасета", true);
+  } finally {
+    input.value = "";
+  }
 }
 
 function chkSrcChanged(file) {
