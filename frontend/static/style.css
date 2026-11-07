@@ -15,7 +15,7 @@
   --card: #f7f4ee;
   --ink: #1f2937;
   --muted: #64748b;
-  --line: #e2e8f0;
+  --line: #cbd5e1;
   --shadow: 0 1px 3px rgba(15, 23, 42, .07);
   --shadow-lg: 0 8px 24px rgba(15, 23, 42, .10);
   --ok: #15803d;
@@ -43,7 +43,7 @@
   --card: #293536;
   --ink: #e2e8f0;
   --muted: #94a3b8;
-  --line: #263449;
+  --line: #3b4a63;
   --shadow: 0 1px 3px rgba(0, 0, 0, .4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, .5);
   --ok: #4ade80;
@@ -113,7 +113,7 @@ button {
 button:hover { background: var(--pink-deep); box-shadow: var(--shadow); }
 button:active { transform: translateY(1px); }
 button.ghost {
-  background: transparent; color: var(--pink); border-color: var(--line);
+  background: transparent; color: var(--pink); border-color: #b6c2d4;
 }
 button.ghost:hover { background: var(--pink-soft); border-color: var(--pink); }
 button.icon { padding: 6px 8px; line-height: 0; }
