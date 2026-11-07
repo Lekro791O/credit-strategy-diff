@@ -70,10 +70,18 @@ const ctRu = v => CHANGE_TYPE_RU[v] || v;
 
 const DIM_RU = {
   path: "путь атрибута", key: "имя атрибута", change_type: "тип изменения",
-  prefix: "префикс", class: "класс", suffix: "хвост пути", array_key: "ключ массива",
+  prefix: "раздел", class: "блок", suffix: "подблок", array_key: "элемент массива",
   diff_flag: "есть различие", source: "срез", value: "значение на срезе",
-  bucket: "бакет значения", value_before: "значение (прод)", value_after: "значение (бета)",
+  bucket: "бакет значения", value_adjusted: "бакет значения", value_before: "значение (прод)", value_after: "значение (бета)",
   adjusted_before: "бакет (прод)", adjusted_after: "бакет (бета)",
+  decision_before: "решение (прод)", decision_after: "решение (бета)",
+  decision_changed: "решение сменилось",
+  product: "продукт", partner_id: "ID партнёра", partner_name: "партнёр",
+  partner_type: "тип партнёра", routing_method: "маршрутизация",
+  pd_model_before: "целевая модель (прод)", pd_model_after: "целевая модель (бета)",
+  cutoff_before: "порог (прод)", cutoff_after: "порог (бета)",
+  reject_reason_before: "причина отказа (прод)", reject_reason_after: "причина отказа (бета)",
+  score_okb_before: "скор БКИ (прод)", score_okb_after: "скор БКИ (бета)",
 };
 
 const STAGE_TITLES = {
@@ -960,7 +968,7 @@ function renderDimChips() {
   if (!box) return;
   box.innerHTML = DIMS_LIST.map(d =>
     `<span class="chip ${pivotRowDims.includes(d) ? "" : "off"}" data-dim="${esc(d)}"
-       title="${esc(DIM_RU[d] || d)}">${pivotRowDims.includes(d) ? (pivotRowDims.indexOf(d) + 1) + ". " : ""}${esc(d)}</span>`).join("");
+       title="${esc(d)}">${pivotRowDims.includes(d) ? (pivotRowDims.indexOf(d) + 1) + ". " : ""}${esc(DIM_RU[d] || d)}</span>`).join("");
   box.querySelectorAll(".chip").forEach(ch => ch.onclick = () => {
     const d = ch.dataset.dim;
     if (pivotRowDims.includes(d)) {
