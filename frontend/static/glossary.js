@@ -125,3 +125,27 @@ const LABEL_RU = {
   "Approval Rate по продукту упал": "Одобрение по продукту упало",
 };
 function labelRu(l) { return LABEL_RU[l] ?? (l || "—"); }
+
+/* аргументы проверок: стоп-факторы, модели, продукты */
+const RULE_RU = {
+  AGELOW@21: "младше 21 года",
+  AGELOW@18: "младше 18 лет",
+  RESTRICTED_REGIONS: "запрещённый регион",
+  NOINCOME: "нет подтверждения дохода",
+  DOCS_EXPIRED: "просрочены документы",
+};
+const MODEL_RU = {
+  ML_MICRO_LOAN_V1: "модель «микрозайм V1»",
+  ML_MICRO_LOAN_V2: "модель «микрозайм V2»",
+  ML_MICRO_LOAN_V3: "модель «микрозайм V3»",
+};
+function prettyArgument(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  v = String(v);
+  if (v.includes(" -> ")) return v.split(" -> ").map(prettyArgument).join(" → ");
+  if (/\w+\.\w+/.test(v)) return prettyPath(v);          // путь атрибута
+  if (RULE_RU[v]) return RULE_RU[v];                     // стоп-фактор
+  if (MODEL_RU[v]) return MODEL_RU[v];                   // модель
+  if (/^\d+$/.test(v)) return `продукт №${v}`;           // ID продукта
+  return v;
+}

@@ -1186,6 +1186,7 @@ async function renderChecks(id, run) {
       <tr class="${r.RESULT === "FAIL" ? "fail" + (r.CONFIDENCE === "LOW" ? " low" : "") : ""}">
         ${cols.map(([k]) => {
           if (k === "LABEL") return `<td title="${esc(r[k])}">${esc(labelRu(r[k]))}</td>`;
+          if (k === "ARGUMENT") return `<td title="${esc(r[k])}">${esc(prettyArgument(r[k]))}</td>`;
           if (k === "RESULT") return `<td title="${esc(r[k])}">${r[k] === "FAIL" ? "проблема" : "в норме"}</td>`;
           if (k === "CONFIDENCE") return `<td title="${esc(r[k])}">${r[k] === "LOW" ? "низкая" : "высокая"}</td>`;
           if (k === "SOURCE") return `<td title="${esc(r[k])}">${r[k] === "AFTER" ? "бета" : "прод"}</td>`;
