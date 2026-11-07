@@ -12,13 +12,13 @@ DuckDB 2.0.0, однопроцессный uvicorn. Замеры: медиана
   SQLite рассматривался как фолбэк, отказались в пользу единого стека с проверками.
 - **Vanilla JS + CSS (без сборки, без CDN)** — фронтенд: отчёт должен работать
   офлайн на демо; сводная — собственный лёгкий pivot поверх агрегатов counts.
-- **checkrunner (подписка 2)** — изоляция пользовательского Python: Docker по
+- **checkrunner** — изоляция пользовательского Python: Docker по
   умолчанию; для локального демо без Docker — subprocess-песочница
   (`CSD_TRUST_LOCAL_CODE=1`), код исполняется в отдельном процессе.
 
 ## 2. Как устроено хранение и почему
 
-Вертикальный datamart по контракту `docs/СХЕМА_ВИТРИНЫ.md`:
+Вертикальный datamart по контракту [`task/docs/СХЕМА_ВИТРИНЫ.md`](task/docs/СХЕМА_ВИТРИНЫ.md):
 `datamart` (APP_ID, PATH, ARRAY_KEY, SOURCE, VALUE, ADJUSTED_VALUE — UNION обеих
 срезов), `attributes` (сопоставление: DIFF_FLAG, CHANGE_TYPE, первичный ключ
 APP_ID+PATH+ARRAY_KEY), `segments` (16 полей слоя разрезов, строка на заявку),
@@ -56,14 +56,14 @@ fact_members; следующий шаг — инкрементальная за�
 **Приведение и сравнение** (`pipeline.build_dataset`, 2002 заявки):
 MacBook Air, Apple M4 (10 ядер), 16 ГБ RAM, macOS, Python 3.14 — медиана
 3 прогонов: normalize 2.2 с, compare 1.6 с, facts 1.3 с, всего **5.2 с**
-(детально: `pipeline/BENCHMARK_HIT.md`). Windows-ноутбук команды (8 потоков,
+(детально: [pipeline/BENCHMARK_HIT.md](pipeline/BENCHMARK_HIT.md)). Windows-ноутбук команды (8 потоков,
 16 ГБ, Python 3.13): тот же разбор — **19 с** (normalize 8.7, compare 5.4,
 facts 4.4); полный цикл через сайт с загрузкой витрины и 5 проверками —
 **~60 с**. Все операции в рамках одной машины — в планках «хорошо».
 
 **Отчёт поверх витрины** (289 533 строки сравнения, 572 221 вертикальная
 строка), HTTP-медианы: MacBook M4, 24 ГБ, DuckDB 2.0.0
-(детально: `mart/benchmarks/REPORT.md`); в скобках — Windows-ноутбук команды:
+(детально: [mart/benchmarks/REPORT.md](mart/benchmarks/REPORT.md)); в скобках — Windows-ноутбук команды:
 
 | Операция | M4 (macOS) | Windows | Планка «хорошо» |
 |---|---:|---:|---|
