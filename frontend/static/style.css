@@ -308,6 +308,13 @@ td.soft { background: var(--soft-hl) !important; }   /* малые значен�
 .brief li { margin: 4px 0; }
 
 /* ---------- проверки ---------- */
+/* источник кода: компактные селекторы у этапов и проверок */
+.proc-src, .chk-src {
+  font-size: 12px; padding: 4px 6px; color: var(--muted); border-radius: 6px;
+  background: transparent;
+}
+.check-src { display: inline-flex; gap: 6px; align-items: center; margin-top: 4px; }
+
 .check-item {
   display: flex; gap: 10px; align-items: flex-start;
   border: 1px solid var(--line); border-radius: 10px;

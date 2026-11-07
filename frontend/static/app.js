@@ -384,12 +384,12 @@ async function renderRuns() {
         </label>
         <div class="check-desc">${esc(CHECK_DESCRIPTIONS[(b.file || "").replace(/^check_|\.py$/g, "")] || "")}</div>
         <div class="check-src">
-          <select class="chk-src" data-file="${esc(b.file)}" onchange="chkSrcChanged('${esc(b.file)}')">
+          <select class="chk-src" data-file="${esc(b.file)}" onchange="chkSrcChanged('${esc(b.file)}')" title="источник кода проверки: встроенная / рабочая область / файл .py">
             <option value="builtin">встроенная</option>
             <option value="workspace">рабочая область</option>
             <option value="file">файл .py</option>
           </select>
-          <input class="chk-name" data-file="${esc(b.file)}" placeholder="имя / путь" style="display:none" size="18">
+          <input class="chk-name" data-file="${esc(b.file)}" placeholder="имя / путь" style="display:none" size="14">
         </div>
         <div class="check-params">${paramsFields(b.file, b.params)}</div>
       </div>
