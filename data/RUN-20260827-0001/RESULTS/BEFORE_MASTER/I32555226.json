@@ -1,0 +1,255 @@
+{
+ "appData": {
+  "application_id": "I32555226",
+  "request_id": "627f49a4-2ed0-97f3-1b0c-22c49cc6331a",
+  "createDateTime": "2024-01-15T16:32:00Z"
+ },
+ "decisionResult": {
+  "decision": "APPROVE",
+  "available_offers": [
+   {
+    "product_id": 12412,
+    "product_name": "PODPISKA",
+    "rank": 1,
+    "type": "standard"
+   },
+   {
+    "product_id": 15210,
+    "product_name": "KUPI_KUPI",
+    "rank": 2,
+    "type": "standard"
+   }
+  ],
+  "product_trials": [
+   {
+    "product_name": "PODPISKA",
+    "product_id": 12412,
+    "tariff": 250,
+    "routing_method": "api",
+    "partner_id": 1777,
+    "partner_name": "MKK_PODPISKA",
+    "partner_type": "CURRENT",
+    "rules": [
+     {
+      "name": "AGELOW@21",
+      "description": "Возраст клиента менее 21 года",
+      "hit": false
+     },
+     {
+      "name": "RESTRICTED_REGIONS",
+      "description": "Регион регистрации клиента входит в список запрещённых",
+      "hit": false
+     },
+     {
+      "name": "AGELOW@18",
+      "description": "Возраст клиента менее 18 лет",
+      "hit": false
+     }
+    ],
+    "decision": "APPROVE",
+    "rejectReason": null,
+    "rejectReasonCode": null,
+    "scoring": {
+     "scoreModels": [
+      {
+       "value": 0.577,
+       "modelName": "ML_MICRO_LOAN_V1",
+       "type": "APPROVAL_PROBABILITY"
+      },
+      {
+       "value": 0.645,
+       "modelName": "ML_MICRO_LOAN_V2",
+       "type": "APPROVAL_PROBABILITY"
+      }
+     ],
+     "pd": {
+      "modelName": "ML_MICRO_LOAN_V2",
+      "value": 0.645
+     }
+    },
+    "epr": 1500,
+    "calculationType": "standard",
+    "cutOff": {
+     "name": "MFO_ZAIMER_2026",
+     "value": 0.55
+    }
+   },
+   {
+    "product_name": "KUPI_KUPI",
+    "product_id": 15210,
+    "tariff": 190,
+    "routing_method": "referal",
+    "partner_id": 1450,
+    "partner_name": "MKK_BYSTRO",
+    "partner_type": "CURRENT",
+    "rules": [
+     {
+      "name": "AGELOW@21",
+      "description": "Возраст клиента менее 21 года",
+      "hit": false
+     },
+     {
+      "name": "RESTRICTED_REGIONS",
+      "description": "Регион регистрации клиента входит в список запрещённых",
+      "hit": false
+     },
+     {
+      "name": "AGELOW@18",
+      "description": "Возраст клиента менее 18 лет",
+      "hit": false
+     }
+    ],
+    "decision": "APPROVE",
+    "rejectReason": null,
+    "rejectReasonCode": null,
+    "scoring": {
+     "scoreModels": [
+      {
+       "value": 0.577,
+       "modelName": "ML_MICRO_LOAN_V1",
+       "type": "APPROVAL_PROBABILITY"
+      },
+      {
+       "value": 0.645,
+       "modelName": "ML_MICRO_LOAN_V2",
+       "type": "APPROVAL_PROBABILITY"
+      }
+     ],
+     "pd": {
+      "modelName": "ML_MICRO_LOAN_V2",
+      "value": 0.645
+     }
+    },
+    "epr": 1380,
+    "calculationType": "standard",
+    "cutOff": {
+     "name": "MFO_ZAIMER_2026",
+     "value": 0.55
+    }
+   }
+  ],
+  "scoring": [
+   {
+    "features": {
+     "age": 28,
+     "cntApprovedContracts3y": 3,
+     "sumActiveDeals": 73500
+    },
+    "modelName": "ML_MICRO_LOAN_V1",
+    "value": [
+     0.377,
+     0.54,
+     0.577
+    ]
+   },
+   {
+    "features": {
+     "age": 28,
+     "sumActiveDeals": 73500,
+     "score_okb": 740
+    },
+    "modelName": "ML_MICRO_LOAN_V2",
+    "value": [
+     0.518,
+     0.699,
+     0.645
+    ]
+   }
+  ]
+ },
+ "characteristics": {
+  "score_okb": 740,
+  "score_equ": 779
+ },
+ "ext_data": [
+  {
+   "body": {
+    "action": "score_okb",
+    "id": "32555226",
+    "params": {
+     "data": 740,
+     "error": false,
+     "ok": true
+    }
+   },
+   "characteristics": {
+    "score_okb": 740
+   },
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "score_equ",
+    "id": "32555226",
+    "params": {
+     "data": 779,
+     "error": false,
+     "ok": true
+    }
+   },
+   "characteristics": {
+    "score_equ": 779
+   },
+   "status": 200
+  }
+ ],
+ "product_catalog": [
+  {
+   "is_new_mfo": false,
+   "mfo_id": "MFO_A",
+   "product_id": 5123,
+   "routing_method": "referal"
+  },
+  {
+   "is_new_mfo": false,
+   "mfo_id": "MFO_B",
+   "product_id": 15210,
+   "routing_method": "referal"
+  },
+  {
+   "is_new_mfo": false,
+   "mfo_id": "MFO_C",
+   "product_id": 91741,
+   "routing_method": "api"
+  },
+  {
+   "is_new_mfo": false,
+   "mfo_id": "MFO_D",
+   "product_id": 12412,
+   "routing_method": "api"
+  },
+  {
+   "is_new_mfo": true,
+   "mfo_id": "MFO_X",
+   "product_id": 751,
+   "routing_method": "api"
+  }
+ ],
+ "tariff_matrix": [
+  {
+   "mfo_id": "MFO_A",
+   "product_id": 5123,
+   "tariff": 139
+  },
+  {
+   "mfo_id": "MFO_B",
+   "product_id": 15210,
+   "tariff": 190
+  },
+  {
+   "mfo_id": "MFO_C",
+   "product_id": 91741,
+   "tariff": 318
+  },
+  {
+   "mfo_id": "MFO_D",
+   "product_id": 12412,
+   "tariff": 250
+  },
+  {
+   "mfo_id": "MFO_X",
+   "product_id": 751,
+   "tariff": 250
+  }
+ ]
+}

@@ -1,0 +1,218 @@
+{
+  "baseline": {
+    "build_seconds": 9.160139597952366e-07,
+    "extra_file_bytes": 0,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.014183791005052626,
+          0.009534375043585896,
+          0.009282750019337982
+        ],
+        "median_seconds": 0.009534375043585896,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.004453707952052355,
+          0.0039240000187419355,
+          0.0037466249777935445
+        ],
+        "median_seconds": 0.0039240000187419355,
+        "rows": 141,
+        "index_scan": false
+      },
+      "attribute": {
+        "seconds": [
+          0.0025506249512545764,
+          0.0025172079913318157,
+          0.002466375008225441
+        ],
+        "median_seconds": 0.0025172079913318157,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  },
+  "attr_app_only": {
+    "build_seconds": 0.024153082980774343,
+    "extra_file_bytes": 524288,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.010262374999001622,
+          0.009283750026952475,
+          0.009035374969244003
+        ],
+        "median_seconds": 0.009283750026952475,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.00425562501186505,
+          0.00392983399797231,
+          0.0037840419681742787
+        ],
+        "median_seconds": 0.00392983399797231,
+        "rows": 141,
+        "index_scan": true
+      },
+      "attribute": {
+        "seconds": [
+          0.0029260830488055944,
+          0.0026152500067837536,
+          0.0025680839898996055
+        ],
+        "median_seconds": 0.0026152500067837536,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  },
+  "data_app_only": {
+    "build_seconds": 0.0452445829869248,
+    "extra_file_bytes": 524288,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.010792999994009733,
+          0.00990149995777756,
+          0.009663457982242107
+        ],
+        "median_seconds": 0.00990149995777756,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.00447450001956895,
+          0.004051458032336086,
+          0.004178332979790866
+        ],
+        "median_seconds": 0.004178332979790866,
+        "rows": 141,
+        "index_scan": false
+      },
+      "attribute": {
+        "seconds": [
+          0.0026585409650579095,
+          0.0025624589761719108,
+          0.0025838749716058373
+        ],
+        "median_seconds": 0.0025838749716058373,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  },
+  "app_indexes": {
+    "build_seconds": 0.0688177080010064,
+    "extra_file_bytes": 1048576,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.010585708019789308,
+          0.009715083986520767,
+          0.009552957955747843
+        ],
+        "median_seconds": 0.009715083986520767,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.004099374986253679,
+          0.003857709001749754,
+          0.003748999966774136
+        ],
+        "median_seconds": 0.003857709001749754,
+        "rows": 141,
+        "index_scan": true
+      },
+      "attribute": {
+        "seconds": [
+          0.002582916000392288,
+          0.002482582989614457,
+          0.0024712920421734452
+        ],
+        "median_seconds": 0.002482582989614457,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  },
+  "path_index": {
+    "build_seconds": 0.062319207994733006,
+    "extra_file_bytes": 1310720,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.01083966699661687,
+          0.009848040994256735,
+          0.00974204094382003
+        ],
+        "median_seconds": 0.009848040994256735,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.004247832985129207,
+          0.00390158302616328,
+          0.0038282079622149467
+        ],
+        "median_seconds": 0.00390158302616328,
+        "rows": 141,
+        "index_scan": false
+      },
+      "attribute": {
+        "seconds": [
+          0.0026688329526223242,
+          0.002722292032558471,
+          0.002548582968302071
+        ],
+        "median_seconds": 0.0026688329526223242,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  },
+  "path_change_index": {
+    "build_seconds": 0.07247183297295123,
+    "extra_file_bytes": 1572864,
+    "queries": {
+      "path_change_segments": {
+        "seconds": [
+          0.010795666952617466,
+          0.009968541970010847,
+          0.009656207985244691
+        ],
+        "median_seconds": 0.009968541970010847,
+        "rows": 1,
+        "index_scan": false
+      },
+      "application_drill": {
+        "seconds": [
+          0.004362457955721766,
+          0.003996749990619719,
+          0.003860624972730875
+        ],
+        "median_seconds": 0.003996749990619719,
+        "rows": 141,
+        "index_scan": false
+      },
+      "attribute": {
+        "seconds": [
+          0.0027520410367287695,
+          0.0025883750058710575,
+          0.0025383339961990714
+        ],
+        "median_seconds": 0.0025883750058710575,
+        "rows": 1,
+        "index_scan": false
+      }
+    }
+  }
+}

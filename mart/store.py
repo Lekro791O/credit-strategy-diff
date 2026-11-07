@@ -6,7 +6,17 @@ this service to untrusted Python: checkrunner exports a run-only snapshot.
 from __future__ import annotations
 
 from contextlib import contextmanager
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows: advisory-locks нет, сервер однопроцессный — безопасный no-op
+    class _FcntlStub:
+        LOCK_EX = LOCK_UN = 0
+
+        @staticmethod
+        def flock(_file, _operation):
+            return None
+
+    fcntl = _FcntlStub()
 import json
 from pathlib import Path
 import tempfile
@@ -101,7 +111,7 @@ class MartStore:
                     AND a.PATH=z.PATH AND a.ARRAY_KEY=z.ARRAY_KEY AND z.SOURCE='AFTER' ''')
             con.execute('''CREATE OR REPLACE VIEW fact_members AS
                 SELECT a.run_id, a.APP_ID, a.PREFIX, a.CLASS, a.SUFFIX, a.ARRAY_KEY,
-                    a.KEY, a.PATH, d.ADJUSTED_VALUE AS VALUE_ADJUSTED, a.DIFF_FLAG,
+                    a.KEY, a.PATH, d.VALUE, d.ADJUSTED_VALUE AS VALUE_ADJUSTED, a.DIFF_FLAG,
                     CASE d.SOURCE WHEN 'BEFORE' THEN 'BEFORE (MASTER)' ELSE 'AFTER (BETA)' END AS SOURCE,
                     a.CHANGE_TYPE
                 FROM attributes a JOIN datamart d USING (run_id, APP_ID, PATH, ARRAY_KEY)''')
@@ -109,8 +119,6 @@ class MartStore:
             con.execute(f'''CREATE TABLE IF NOT EXISTS counts AS
                 SELECT run_id, {dim_sql}, count(DISTINCT APP_ID)::BIGINT AS CNT
                 FROM fact_members GROUP BY run_id, {dim_sql}''')
-            con.execute("CREATE INDEX IF NOT EXISTS attr_path ON attributes(run_id, PATH)")
-            con.execute("CREATE INDEX IF NOT EXISTS attr_change ON attributes(run_id, CHANGE_TYPE)")
 
     @contextmanager
     def connection(self):
@@ -222,6 +230,16 @@ class MartStore:
                 dims = ', '.join(map(quoted, FACT_DIMS))
                 con.execute(f'''INSERT INTO counts SELECT run_id, {dims}, count(DISTINCT APP_ID)
                     FROM fact_members WHERE run_id=? GROUP BY run_id, {dims}''', [run_id])
+                # Build secondary ART indexes after the bulk load. A leading
+                # run_id in a composite index does not provide the same selective
+                # APP_ID scan as a single-column ART index in DuckDB's drill query.
+                # Primary keys still enforce the unchanged identity contracts.
+                for statement in (
+                    'CREATE INDEX IF NOT EXISTS attr_path ON attributes(run_id, PATH)',
+                    'CREATE INDEX IF NOT EXISTS attr_change ON attributes(run_id, CHANGE_TYPE)',
+                    'CREATE INDEX IF NOT EXISTS attr_app_lookup ON attributes(APP_ID)',
+                ):
+                    con.execute(statement)
                 con.execute("COMMIT")
             except BaseException:
                 con.execute("ROLLBACK")

@@ -87,6 +87,12 @@ class EdgeTests(unittest.TestCase):
                                  {'product_id': 1, 'type': 'standard', 'rank': 1}],
             'scoring': [{'modelName': 'A', 'value': [.2, .3], 'features': {'age': 40}},
                         {'modelName': 'B', 'value': [.3, .2], 'features': {'age': 50}}]}}
+        normalized = self.norm(d)
+        def keys(path):
+            return {r['ARRAY_KEY'] for r in normalized if r['PATH'] == path}
+        self.assertEqual(keys('decisionResult.available_offers.rank'), {'1:manual', '1:standard'})
+        self.assertEqual(keys('decisionResult.scoring.value'), {'A|0', 'A|1', 'B|0', 'B|1'})
+        self.assertEqual(keys('decisionResult.scoring.features.age'), {'A', 'B'})
         a = json.loads(json.dumps(d))
         a['decisionResult']['available_offers'].reverse()
         a['decisionResult']['scoring'].reverse()

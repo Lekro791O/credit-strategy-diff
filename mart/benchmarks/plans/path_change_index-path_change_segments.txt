@@ -1,0 +1,60 @@
+╭─ Summary ───────────╮
+│ Total Time: 0.0098s │
+╰─────────────────────╯
+╭─ Hash Group By ────────────────────────────────────────────────────────────────────────────╮
+│ Groups: #0                                                                                 │
+│ Aggregates: count_star()                                                                   │
+│ 1 row                                                                                  0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Projection ─────────────────────────────────┴─────────────────────────────────────────────╮
+│ Projections: #0                                                                            │
+│ 56 rows                                                                                0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Projection ─────────────────────────────────┴─────────────────────────────────────────────╮
+│ Projections: #0                                                                            │
+│ 56 rows                                                                                0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Hash Group By ──────────────────────────────┴─────────────────────────────────────────────╮
+│ Groups: #0, #1                                                                             │
+│ 56 rows                                                                                0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Projection ─────────────────────────────────┴─────────────────────────────────────────────╮
+│ Projections: PATH, APP_ID                                                                  │
+│ 134 rows                                                                               0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Projection ─────────────────────────────────┴─────────────────────────────────────────────╮
+│ Projections:                                                                               │
+│ __internal_compress_string_uhugeint(#4), #5                                                │
+│ 134 rows                                                                               0µs │
+╰──────────────────────────────────────────────┬─────────────────────────────────────────────╯
+╭─ Hash Join ──────────────────────────────────┴─────────────────────────────────────────────╮
+│ Join Type: RIGHT                                                                           │
+│ Conditions: run_id = run_id, APP_ID = APP_ID, PATH = PATH, ARRAY_KEY = ARRAY_KEY           │
+│ 134 rows                                                                               0µs │
+╰──────────────────────────────────────────────┰┰────────────────────────────────────────────╯
+                                               ┃┠──────────────────────────────────────────────────────────────────────────────────────────────╮
+╭─ Table Scan ─────────────────────────────────┚┖────────────────────────────────────────────╮  ╭─ Hash Join ──────────────────────────────────┴─────────────────────────────────────────────╮
+│ Table: run.main.datamart                                                                   │  │ Join Type: RIGHT                                                                           │
+│ Type: Sequential Scan                                                                      │  │ Conditions: run_id = run_id, APP_ID = APP_ID, PATH = PATH, ARRAY_KEY = ARRAY_KEY           │
+│ Projections: run_id, APP_ID, PATH, ARRAY_KEY                                               │  │ 134 rows                                                                               0µs │
+│ Filters:                                                                                   │  ╰──────────────────────────────────────────────┰┰────────────────────────────────────────────╯
+│ PATH = 'decisionResult.product_trials.rules.hit', SOURCE = 'AFTER'                         │                                                 ┃┠─────────────────────────────────────────────────────────────────────────────────────╮
+│ Dynamic Filters:                                                                           │  ╭─ Table Scan ─────────────────────────────────┚┖────────────────────────────────────────────╮  ╭─ Hash Join ─────────────────────────┴────────────────────────────────────╮
+│ run_id = 'run', optional: (APP_ID >= 'I32554366') AND optional: (APP_ID <= 'I32557318'),   │  │ Table: run.main.datamart                                                                   │  │ Join Type: INNER                                                         │
+│ PATH = 'decisionResult.product_trials.rules.hit',                                          │  │ Type: Sequential Scan                                                                      │  │ Conditions: run_id = run_id, APP_ID = APP_ID                             │
+│ optional: (ARRAY_KEY >= '12412|AGELOW@21') AND optional: (ARRAY_KEY <= '91741|AGELOW@21')  │  │ Projections: run_id, APP_ID, PATH, ARRAY_KEY                                               │  │ 134 rows                                                             0µs │
+│ Row Groups Scanned: 5 / 5                                                                  │  │ Filters:                                                                                   │  ╰─────────────────────────────────────┬────────────────────────────────────╯
+│ 14,068 rows                                                                            0µs │  │ PATH = 'decisionResult.product_trials.rules.hit', SOURCE = 'BEFORE'                        │                                        ├───────────────────────────────────────────────────────╮
+╰────────────────────────────────────────────────────────────────────────────────────────────╯  │ Dynamic Filters:                                                                           │  ╭─ Table Scan ────────────────────────┴────────────────────────────────────╮  ╭─ Table Scan ──┴───────────────╮
+                                                                                                │ run_id = 'run', optional: (APP_ID >= 'I32554366') AND optional: (APP_ID <= 'I32557318'),   │  │ Table: run.main.attributes                                               │  │ Table: run.main.segments      │
+                                                                                                │ PATH = 'decisionResult.product_trials.rules.hit',                                          │  │ Type: Sequential Scan                                                    │  │ Type: Sequential Scan         │
+                                                                                                │ optional: (ARRAY_KEY >= '12412|AGELOW@21') AND optional: (ARRAY_KEY <= '91741|AGELOW@21')  │  │ Projections: run_id, APP_ID, PATH, ARRAY_KEY                             │  │ Projections: run_id, APP_ID   │
+                                                                                                │ Row Groups Scanned: 5 / 5                                                                  │  │ Filters:                                                                 │  │ Filters: DECISION_CHANGED = 1 │
+                                                                                                │ 14,064 rows                                                                            0µs │  │ PATH = 'decisionResult.product_trials.rules.hit',                        │  │ Row Groups Scanned: 1 / 1     │
+                                                                                                ╰────────────────────────────────────────────────────────────────────────────────────────────╯  │ CHANGE_TYPE = 'VALUE_CHANGED'                                            │  │ 385 rows                  0µs │
+                                                                                                                                                                                                │ Dynamic Filters:                                                         │  ╰───────────────────────────────╯
+                                                                                                                                                                                                │ run_id = 'run',                                                          │
+                                                                                                                                                                                                │ optional: (APP_ID >= 'I32554354') AND optional: (APP_ID <= 'I32557350')  │
+                                                                                                                                                                                                │ Row Groups Scanned: 3 / 3                                                │
+                                                                                                                                                                                                │ 134 rows                                                             0µs │
+                                                                                                                                                                                                ╰──────────────────────────────────────────────────────────────────────────╯

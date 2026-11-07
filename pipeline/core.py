@@ -1,5 +1,5 @@
 """JSON leaves -> normalized rows -> full outer comparison -> count facts."""
-from collections import Counter
+from collections import Counter, defaultdict
 import json
 import math
 from urllib.parse import quote
@@ -183,8 +183,10 @@ def fact_members(rows):
 def aggregate(rows):
     """Counts of attributes per exact organizer fact grain (not global app count)."""
     fields = FACT_FIELDS[:-1]
-    counts = Counter(tuple(m[k] for k in fields) for m in fact_members(rows))
-    return [dict(zip(fields, key), CNT=count) for key, count in sorted(counts.items())]
+    counts = defaultdict(set)
+    for member in fact_members(rows):
+        counts[tuple(member[k] for k in fields)].add(member['APP_ID'])
+    return [dict(zip(fields, key), CNT=len(apps)) for key, apps in sorted(counts.items())]
 
 
 def drill_down(rows, **filters):

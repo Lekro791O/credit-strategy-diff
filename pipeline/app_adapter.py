@@ -20,26 +20,35 @@ def _procedure(spec, default):
     raise PipelineError('Unsupported pipeline procedure source; use builtin/default, module: name, or a Python callable')
 
 
-def build_mart(dataset_dir, normalize_cfg=None, compare_cfg=None):
-    """Return (comparison rows, application segments) using the app's existing call.
+def build_dataset(dataset_dir, normalize_cfg=None, compare_cfg=None, facts_cfg=None, *,
+                  event=None, resolver=None, expected_app_ids=None):
+    """Rich run result: eligible pairs, vertical counts, diagnostics, quality.
 
-    Accept an organizer run directory (RESULTS/BEFORE_MASTER, AFTER_BETA),
-    RESULTS itself, or a sample directory containing BEFORE and AFTER.
-    Procedure configs accept the app's builtin/default or kind=module/name=module:callable.
-    normalize_cfg may additionally contain config=Config for parsing policies.
+    resolver(spec, stage, default) can route user code to an isolated executor.
+    Without a resolver, only explicit trusted Python module/callable handlers work.
     """
-    root = Path(dataset_dir)
-    candidates = [(root / 'RESULTS' / 'BEFORE_MASTER', root / 'RESULTS' / 'AFTER_BETA'),
-                  (root / 'BEFORE_MASTER', root / 'AFTER_BETA'),
-                  (root / 'BEFORE', root / 'AFTER')]
-    pair = next(((b, a) for b, a in candidates if b.is_dir() and a.is_dir()), None)
-    if pair is None:
-        raise PipelineError('Dataset must contain RESULTS/BEFORE_MASTER + AFTER_BETA or BEFORE + AFTER')
+    from .settings import config_from_settings
+    from .dataset import run_dataset
     defaults = Handlers()
-    handlers = Handlers(normalize=_procedure(normalize_cfg, defaults.normalize),
-                        compare=_procedure(compare_cfg, defaults.compare))
+    def resolve(spec, stage):
+        default = getattr(defaults, stage)
+        return resolver(spec, stage, default) if resolver else _procedure(spec, default)
+    settings = normalize_cfg.get('settings') if isinstance(normalize_cfg, dict) else None
     config = normalize_cfg.get('config') if isinstance(normalize_cfg, dict) else None
     if config is not None and not isinstance(config, Config):
         raise PipelineError('normalize_cfg.config must be a pipeline.Config instance')
-    result = run_directories(*pair, config=config or default_config(), handlers=handlers)
+    return run_dataset(dataset_dir, config=config or config_from_settings(settings),
+                       handlers=Handlers(normalize=resolve(normalize_cfg, 'normalize'),
+                                         compare=resolve(compare_cfg, 'compare'),
+                                         aggregate=resolve(facts_cfg, 'aggregate')),
+                       event=event, expected_app_ids=expected_app_ids)
+
+
+def build_mart(dataset_dir, normalize_cfg=None, compare_cfg=None):
+    """Backward compatible tuple; uses only paired successfully processed replies.
+
+    For exclusions/counters use build_dataset; do not infer ingestion quality from
+    the two lists returned by this legacy adapter.
+    """
+    result = build_dataset(dataset_dir, normalize_cfg, compare_cfg)
     return result['comparison'], result['segments']

@@ -6,27 +6,86 @@
 from __future__ import annotations
 
 from typing import Any
+import json
+from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import checks as checks_mod
 from . import config, llm as llm_mod, workspace
 from .export_html import render_checks_html
-from .facts import DIMS, apps_in_group, fact_rows
-from .models import CheckSpec, ProcedureSource, RunConfig
+from .facts import DIMS, apps_in_group, fact_rows, fact_result
+from .models import CheckSpec, ProcedureSource, RunConfig, PivotRequest
 from .runs import RunManager
 
-app = FastAPI(title="Система анализа изменений СПР", version="0.1.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    manager.recover_interrupted()
+    yield
+
+app = FastAPI(lifespan=lifespan, title="Система анализа изменений СПР", version="0.1.0")
 manager = RunManager()
 
 
-def _user(x_user: str | None) -> str:
-    u = (x_user or "anon").strip()
-    if not u or any(ch in u for ch in "/\\.."):
-        raise HTTPException(400, "некорректное имя пользователя")
-    return u
+def _user(x_user=None):
+    # X-User-Id is a display preference only, not proof of ownership.
+    from .access import current_user
+    user = current_user.get()
+    if not user:
+        raise HTTPException(401, "SESSION_REQUIRED")
+    return user
+
+
+@app.middleware("http")
+async def access_boundary(request: Request, call_next):
+    from .access import identity, current_user, COOKIE
+    if request.url.path != '/' and not request.url.path.startswith('/api/'):
+        return await call_next(request)
+    origin = request.headers.get('origin')
+    if request.method not in ('GET', 'HEAD', 'OPTIONS') and origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'detail': {'code': 'ORIGIN_DENIED', 'message': 'Cross-origin writes are not allowed'}}, status_code=403)
+    user, cookie = identity(request.cookies.get(COOKIE))
+    token = current_user.set(user)
+    try:
+        parts = request.url.path.split('/')
+        if len(parts) >= 4 and parts[2] == 'runs' and parts[3]:
+            try:
+                run = manager.load(parts[3])
+                if run.config.user != user:
+                    raise FileNotFoundError()
+            except (FileNotFoundError, ValueError):
+                return JSONResponse({'detail': {'code': 'NOT_FOUND', 'message': 'Прогон не найден'}}, status_code=404)
+        response = await call_next(request)
+        if cookie != request.cookies.get(COOKIE):
+            response.set_cookie(COOKIE, cookie, httponly=True, samesite='strict',
+                                secure=request.url.scheme == 'https', max_age=30 * 86400)
+        return response
+    finally:
+        current_user.reset(token)
+
+
+@app.exception_handler(FileNotFoundError)
+async def missing_resource(request, exc):
+    return JSONResponse({'detail': {'code': 'NOT_FOUND', 'message': 'Ресурс не найден'}}, status_code=404)
+
+
+@app.exception_handler(ValueError)
+async def invalid_input(request, exc):
+    return JSONResponse({'detail': {'code': 'INVALID_INPUT', 'message': str(exc)}}, status_code=422)
+
+
+@app.exception_handler(RuntimeError)
+async def unavailable_state(request, exc):
+    return JSONResponse({'detail': {'code': 'CONFLICT', 'message': str(exc)}}, status_code=409)
+
+
+@app.get('/api/session')
+def session_info():
+    return {'user_id': _user(), 'access_model': 'signed-browser-session', 'header_identity': False}
 
 
 # ---------- справочники ----------
@@ -52,14 +111,67 @@ def datasets() -> dict[str, Any]:
                           "requires_pipeline": False}] + found}
 
 
+@app.post("/api/datasets/upload")
+def upload_dataset(file: UploadFile, name: str = "") -> dict[str, Any]:
+    """Загрузка датасета zip-архивом: появится в списке датасетов."""
+    from . import datasets as datasets_mod
+    data = file.file.read()
+    try:
+        return datasets_mod.import_zip(data, name or Path(file.filename or "").stem)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
 @app.get("/api/builtin/checks")
 def builtin_checks() -> dict[str, Any]:
     return {"checks": checks_mod.builtin_checks()}
 
 
+@app.get('/api/builtin/checks/{name}')
+def builtin_check_source(name: str):
+    item = next((b for b in checks_mod.builtin_checks() if name in (b['id'], b['file'])), None)
+    if item is None:
+        raise HTTPException(404, 'Unknown builtin check')
+    return dict(item, code=(config.BUILTIN_CHECKS_DIR / item['file']).read_text(encoding='utf8'))
+
+
+@app.get('/api/builtin/procedures/{stage}')
+def builtin_procedure_source(stage: str):
+    import inspect
+    from pipeline import normalize, compare, aggregate
+    definitions = {'normalize': (normalize, 'document, *, app_id, source, config', 'document, app_id=app_id, source=source, config=config'),
+                   'compare': (compare, 'before_rows, after_rows', 'before_rows, after_rows'),
+                   'facts': (aggregate, 'comparison_rows', 'comparison_rows')}
+    if stage not in definitions:
+        raise HTTPException(404, 'Unknown procedure stage')
+    fn, signature, args = definitions[stage]
+    code = (f'from pipeline import {fn.__name__} as default_handler\n\n'
+            f'def run({signature}):\n    return default_handler({args})\n\n'
+            f"PROCEDURE = {{'stage': '{fn.__name__}', 'entrypoint': run}}\n")
+    return {'stage': stage, 'code': code, 'builtin_code': inspect.getsource(fn),
+            'code_ref': fn.__module__ + ':' + fn.__name__}
+
+
 @app.get("/api/facts/dims")
 def fact_dims() -> dict[str, Any]:
     return {"dims": sorted(DIMS)}
+
+
+@app.get('/api/normalization/schema')
+def normalization_schema():
+    import json
+    import pipeline
+    from pathlib import Path
+    return json.loads((Path(pipeline.__file__).parent/'normalization.schema.json').read_text())
+
+
+@app.get('/api/normalization/defaults')
+def normalization_defaults():
+    from pipeline import default_config
+    cfg = default_config()
+    return {'version': 1, 'exclude': list(cfg.exclude),
+            'arrays': {path: {'mode': rule.mode, 'keys': list(rule.keys)} for path, rule in cfg.arrays.items()},
+            'buckets': {}}
 
 
 # ---------- конфигурации ----------
@@ -82,12 +194,36 @@ def del_config(name: str, x_user_id: str | None = Header(default=None)) -> dict[
     return {"ok": True}
 
 
+@app.get('/api/configs/{name}')
+def get_config(name: str):
+    return {'config': manager.load_config(_user(), name).model_dump()}
+
+
+@app.post('/api/configs/{name}/run')
+def run_config(name: str):
+    return create_run(manager.load_config(_user(), name))
+
+
+@app.post('/api/runs/{run_id}/repeat')
+def repeat_run(run_id: str):
+    run = manager.repeat(run_id)
+    manager.start(run.id)
+    return {'run': run.model_dump()}
+
+
 # ---------- прогоны ----------
 
 @app.post("/api/runs")
 def create_run(cfg: RunConfig,
                x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
     cfg.user = _user(x_user_id)
+    from .access import validate_dataset
+    validate_dataset(cfg.dataset, cfg.user)
+    from pipeline import config_from_settings
+    try:
+        config_from_settings(cfg.normalize.settings)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     if not cfg.checks:
         # разумный дефолт: все выданные проверки
         cfg.checks = [CheckSpec(
@@ -116,51 +252,102 @@ def get_run(run_id: str) -> dict[str, Any]:
 # ---------- факты / drill-down ----------
 
 @app.get("/api/runs/{run_id}/facts")
-def facts(run_id: str, dims: str = Query(default="path,change_type"),
-          path_prefix: str = "", change_type: str = "", diff_flag: int = -1,
-          key: str = "", limit: int = 5000) -> dict[str, Any]:
+def facts(run_id: str, request: Request, dims: str = Query(default="path,change_type"),
+          limit: int = 5000, offset: int = 0) -> dict[str, Any]:
+    run = manager.load(run_id)
+    filters: dict[str, Any] = {k: v for k, v in request.query_params.items()
+                               if k not in ('dims', 'limit', 'offset') and v != ''}
+    if 'diff_flag' in filters:
+        filters['diff_flag'] = int(filters['diff_flag'])
+        if filters['diff_flag'] == -1:
+            filters.pop('diff_flag')
+    custom_facts = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
     mart = manager.open_mart(run_id)
     try:
-        filters: dict[str, Any] = {}
-        if path_prefix:
-            filters["path_prefix"] = path_prefix
-        if change_type:
-            filters["change_type"] = change_type
-        if diff_flag >= 0:
-            filters["diff_flag"] = diff_flag
-        if key:
-            filters["key"] = key
-        rows = fact_rows(mart, [d.strip() for d in dims.split(",") if d.strip()],
-                         filters, limit)
-        return {"rows": rows}
+        return fact_result(mart, [d.strip() for d in dims.split(',') if d.strip()],
+                           filters, limit=limit, offset=offset,
+                           segment_rows=run.segment_details,
+                           fact_scope=run.fact_rows if custom_facts else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     finally:
         mart.close()
+
+
+@app.get("/api/runs/{run_id}/segment_values")
+def segment_values(run_id: str) -> dict[str, Any]:
+    """Допустимые значения фильтров разрезов — для выпадающих списков."""
+    run = manager.load(run_id)
+    products, partners, routings, models, cutoffs = set(), set(), set(), set(), set()
+    for s in run.segment_details:
+        for piece in (s.get("PRODUCTS") or "").replace(",", ";").split(";"):
+            if piece.strip():
+                products.add(piece.strip())
+        for k, target in (("PARTNER_TYPE", partners), ("ROUTING_METHOD", routings),
+                          ("PD_MODEL_BEFORE", models), ("PD_MODEL_AFTER", models),
+                          ("CUTOFF_BEFORE", cutoffs), ("CUTOFF_AFTER", cutoffs)):
+            if s.get(k):
+                target.add(str(s[k]))
+    return {"product": sorted(products), "partner": sorted(partners),
+            "routing": sorted(routings), "pd_model": sorted(models),
+            "cutoff": sorted(cutoffs)}
 
 
 @app.get("/api/runs/{run_id}/apps")
-def apps(run_id: str, path: str = "", path_prefix: str = "", change_type: str = "",
-         diff_flag: int = -1, key: str = "", array_key: str = "",
-         value_after: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
+def apps(run_id: str, request: Request, offset: int = 0, limit: int = 200):
+    filters = dict(request.query_params)
+    filters.pop('offset', None); filters.pop('limit', None)
+    if 'diff_flag' in filters:
+        filters['diff_flag'] = int(filters['diff_flag'])
+        if filters['diff_flag'] == -1:
+            filters.pop('diff_flag')
+    run = manager.load(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
     mart = manager.open_mart(run_id)
     try:
-        f: dict[str, Any] = {}
-        if path:
-            f["path"] = path
-        if path_prefix:
-            f["path_prefix"] = path_prefix
-        if change_type:
-            f["change_type"] = change_type
-        if diff_flag >= 0:
-            f["diff_flag"] = diff_flag
-        if key:
-            f["key"] = key
-        if array_key:
-            f["array_key"] = array_key
-        if value_after:
-            f["value_after"] = value_after
-        return apps_in_group(mart, {}, f, offset, limit)
+        return apps_in_group(mart, {}, filters, offset, limit,
+                             segment_rows=run.segment_details, fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     finally:
         mart.close()
+
+
+@app.post('/api/runs/{run_id}/pivot')
+def pivot(run_id: str, body: PivotRequest):
+    run = manager.load(run_id)
+    mart = manager.open_mart(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
+    try:
+        return fact_result(mart, body.dimensions, body.filters,
+                           segment_filters=body.segment_filters, segment_rows=run.segment_details,
+                           column_dimension=body.column_dimension, limit=body.limit, offset=body.offset,
+                           fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    finally:
+        mart.close()
+
+
+@app.post('/api/runs/{run_id}/pivot/apps')
+def pivot_apps(run_id: str, body: PivotRequest):
+    run = manager.load(run_id)
+    mart = manager.open_mart(run_id)
+    custom = run.config.facts.kind != 'builtin' or run.config.facts.name != 'default'
+    try:
+        return apps_in_group(mart, {}, body.filters, body.offset, body.limit,
+                             segment_filters=body.segment_filters, segment_rows=run.segment_details,
+                             fact_scope=run.fact_rows if custom else None)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    finally:
+        mart.close()
+
+
+@app.get('/api/runs/{run_id}/quality')
+def run_quality(run_id: str):
+    run = manager.load(run_id)
+    return {'quality': run.quality, 'diagnostics': run.diagnostics}
 
 
 @app.get("/api/runs/{run_id}/apps/{app_id}")
@@ -197,55 +384,70 @@ def decision_matrix(run_id: str) -> dict[str, Any]:
         mart.close()
 
 
+@app.get("/api/runs/{run_id}/source_split")
+def source_split(run_id: str) -> dict[str, Any]:
+    """Разделение «логика vs данные» (сценарий 4): у заявок с различиями
+    отделяем изменения во внешних источниках (ext_data/characteristics —
+    ложная тревога, стратегия не тронута) от изменений логики стратегии
+    (всё остальное). Клик по категории открывает список заявок."""
+    mart = manager.open_mart(run_id)
+    try:
+        where = f"{mart.run_clause} AND" if mart.run_clause else ""
+        rows = mart.query(
+            "SELECT APP_ID, "
+            "MAX(CASE WHEN PATH LIKE 'ext_data%' OR PATH LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS ext_chg, "
+            "MAX(CASE WHEN PATH NOT LIKE 'ext_data%' AND PATH NOT LIKE 'characteristics%' "
+            "THEN 1 ELSE 0 END) AS logic_chg "
+            f"FROM comparison WHERE {where} DIFF_FLAG = 1 GROUP BY APP_ID")
+    finally:
+        mart.close()
+    cats: dict[str, list[str]] = {"logic": [], "external_only": [], "both": []}
+    for r in rows:
+        if r["ext_chg"] and r["logic_chg"]:
+            cats["both"].append(r["APP_ID"])
+        elif r["ext_chg"]:
+            cats["external_only"].append(r["APP_ID"])
+        else:
+            cats["logic"].append(r["APP_ID"])
+    return {k: {"cnt": len(v), "app_ids": v[:500]} for k, v in cats.items()}
+
+
 # ---------- проверки ----------
 
 @app.get("/api/runs/{run_id}/checks")
 def run_checks(run_id: str) -> dict[str, Any]:
-    return {"rows": manager.load(run_id).check_rows}
+    run = manager.load(run_id)
+    return {'rows': run.check_rows, 'errors': run.errors, 'executions': run.check_executions,
+            'status': run.check_report_status}
 
 
 @app.post("/api/runs/{run_id}/checks/try")
-def try_check(run_id: str, body: dict[str, Any],
-              x_user_id: str | None = Header(default=None)) -> dict[str, Any]:
-    """Проверка «на лету»: код из workspace/тела — сразу против витрины прогона.
-
-    Сценарий демо: написали новую проверку в приложении → применили →
-    она попала в тот же отчёт.
-    """
-    mart = manager.open_mart(run_id)
-    try:
-        kind, name = body.get("kind", "code"), body.get("name", "ad_hoc")
-        if kind == "workspace":
-            code = workspace.read_workspace(_user(x_user_id), name)
-            ref = f"workspace:{name}"
-        else:
-            code = body.get("code", "")
-            ref = "inline"
-        check = checks_mod.load_check_from_code(code, ref)
-        params = {**check.get("params", {}), **body.get("params", {})}
-        rows = [dict(r, _check_id=check.get("id", "?"), _ref=ref)
-                for r in (check["entrypoint"](mart, params) or [])]
-        return {"rows": rows, "check_id": check.get("id")}
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    finally:
-        mart.close()
+def try_check(run_id: str, body: dict[str, Any]):
+    source = body.get('source') or {k: body[k] for k in ('kind', 'name', 'code') if k in body}
+    source.setdefault('kind', 'code')
+    source.setdefault('name', 'ad_hoc')
+    spec = CheckSpec(source=ProcedureSource.model_validate(source), params=body.get('params', {}))
+    result = manager.try_check(run_id, spec.model_dump())
+    result.setdefault('check_id', spec.source.name)
+    return result
 
 
 @app.post("/api/runs/{run_id}/checks/add_result")
-def add_check_result(run_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    """Дописать строки ad-hoc проверки в отчёт готового прогона."""
+def add_check_result(run_id: str, body: dict[str, Any]):
+    # Legacy UI sends the returned rows after /try. They are already persisted.
+    # Never accept client-forged PASS/FAIL rows as execution evidence.
     run = manager.load(run_id)
-    for r in body.get("rows", []):
-        run.check_rows.append(r)
-    manager.save(run)
-    return {"ok": True, "total": len(run.check_rows)}
+    rows = body.get('rows', [])
+    if any(row not in run.check_rows for row in rows):
+        raise HTTPException(422, 'UNVERIFIED_RESULT: execute the check through /checks/try')
+    return {'ok': True, 'total': len(run.check_rows), 'already_saved': True}
 
 
 @app.get("/api/runs/{run_id}/checks/export.html", response_class=HTMLResponse)
-def export_checks(run_id: str) -> HTMLResponse:
+def export_checks(run_id: str, request: Request) -> HTMLResponse:
     run = manager.load(run_id).model_dump()
-    url = f"http://localhost:8000/#/runs/{run_id}"
+    url = str(request.base_url).rstrip("/") + f"/#/runs/{run_id}"
     resp = HTMLResponse(render_checks_html(run, url))
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     return resp
@@ -270,8 +472,10 @@ def llm_opinion(run_id: str) -> dict[str, Any]:
         opinion = llm_mod.ask_llm(llm_mod.build_summary(mart, run.check_rows))
     finally:
         mart.close()
-    run.llm = opinion
-    manager.save(run)
+    with manager._lock:
+        run = manager.load(run_id)
+        run.llm = opinion
+        manager.save(run)
     return {"llm": opinion}
 
 

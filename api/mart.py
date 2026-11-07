@@ -215,9 +215,6 @@ class DuckMart:
     # ---------- загрузка ----------
 
     def load(self, rows: Iterable[dict], segments: Iterable[dict]) -> None:
-        if self.path.exists():  # чистая замена прогона
-            self.path.unlink()
-            self._store = None
         self._ensure_store().save_run(self.RUN_ID, rows, segments)
 
     # ---------- MartAPI (контракт, делегируем) ----------
@@ -244,14 +241,10 @@ class DuckMart:
     # ---------- сервисные запросы для UI ----------
 
     def query(self, sql: str, params: tuple = ()) -> list[dict]:
-        import duckdb
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
+        with self._ensure_store().connection() as con:
             cur = con.execute(sql, list(params))
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
-        finally:
-            con.close()
 
     def decision_stats(self) -> dict:
         segs = self.query(

@@ -3,6 +3,7 @@
 Запуск из корня репозитория:
     python -m pytest tests/ -q
 """
+import json
 import os
 import tempfile
 
@@ -72,7 +73,8 @@ def test_facts_and_drilldown():
     assert any(r["DIFF_FLAG"] for r in detail["attributes"])
 
 
-def test_adhoc_check_adds_to_report():
+def test_adhoc_check_adds_to_report(monkeypatch):
+    monkeypatch.setenv("CSD_TRUST_LOCAL_CODE", "1")
     rid = _wait_done(_make_run()["id"])["id"]
     code = '''
 def run(mart, params):
@@ -109,14 +111,82 @@ def test_llm_graceful_without_config():
 
 
 def test_multiuser_isolation():
-    r1 = client.post("/api/configs", json={"name": "cfg-a"}, headers={"X-User-Id": "u1"})
+    first, second = TestClient(app), TestClient(app)
+    r1 = first.post("/api/configs", json={"name": "cfg-a", "dataset": "demo://synthetic"}, headers={"X-User-Id": "u1"})
     assert r1.status_code == 200
-    cfgs_u2 = client.get("/api/configs", headers={"X-User-Id": "u2"}).json()["configs"]
+    cfgs_u2 = second.get("/api/configs", headers={"X-User-Id": "u2"}).json()["configs"]
     assert all(c["name"] != "cfg-a" for c in cfgs_u2)
-    mine = client.get("/api/configs", headers={"X-User-Id": "u1"}).json()["configs"]
+    mine = first.get("/api/configs", headers={"X-User-Id": "u1"}).json()["configs"]
     assert any(c["name"] == "cfg-a" for c in mine)
 
 
 def test_datasets_endpoint():
     data = client.get("/api/datasets").json()
     assert any(d["id"] == "demo://synthetic" for d in data["datasets"])
+
+
+def test_vertical_dims_and_exact_drill():
+    """SOURCE/бакет в сводной и drill-down, точно соответствующий ячейке."""
+    rid = _wait_done(_make_run()["id"])["id"]
+    facts = client.get(f"/api/runs/{rid}/facts?dims=path,source&diff_flag=1&limit=20").json()
+    assert facts["rows"]
+    g = facts["rows"][0]["dims"]
+    apps = client.get(f"/api/runs/{rid}/apps",
+                      params={"path": g["path"], "source": g["source"],
+                              "diff_flag": 1}).json()
+    assert apps["total"] > 0
+    fb = client.get(f"/api/runs/{rid}/facts?dims=bucket&diff_flag=1&limit=10").json()
+    assert fb["rows"]
+
+
+def test_segment_filters_apply_to_pivot_and_drill():
+    rid = _wait_done(_make_run()["id"])["id"]
+    vals = client.get(f"/api/runs/{rid}/segment_values").json()
+    assert vals["partner"]
+    p = vals["partner"][0]
+    facts = client.get(f"/api/runs/{rid}/facts",
+                       params={"dims": "path", "diff_flag": 1, "partner": p}).json()
+    assert facts["rows"]
+    apps = client.get(f"/api/runs/{rid}/apps",
+                      params={"diff_flag": 1, "partner": p}).json()
+    assert apps["total"] > 0
+
+
+def test_export_link_not_hardcoded():
+    rid = _wait_done(_make_run()["id"])["id"]
+    r = client.get(f"/api/runs/{rid}/checks/export.html")
+    assert "localhost:8000" not in r.text
+    assert "http://testserver/#/runs/" in r.text
+
+
+def test_dataset_upload_zip():
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for side in ("BEFORE", "AFTER"):
+            for i in (1, 2, 3):
+                z.writestr(f"{side}/A{i}.json",
+                           json.dumps({"appData": {"application_id": f"A{i}"},
+                                       "decisionResult": {"decision": "APPROVE" if side == "BEFORE" else "REJECT"}}))
+    r = client.post("/api/datasets/upload", files={"file": ("my-ds.zip", buf.getvalue())})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["apps"] == 3 and data["requires_pipeline"]
+    listed = client.get("/api/datasets").json()["datasets"]
+    assert any(d["id"] == data["id"] and d["apps"] == 3 for d in listed)
+
+
+def test_dataset_upload_rejects_garbage():
+    r = client.post("/api/datasets/upload", files={"file": ("bad.zip", b"not a zip")})
+    assert r.status_code == 422
+
+
+def test_source_split_logic_vs_external():
+    run = _wait_done(_make_run()["id"])
+    rid = run["id"]
+    data = client.get(f"/api/runs/{rid}/source_split").json()
+    for key in ("logic", "external_only", "both"):
+        assert key in data and data[key]["cnt"] == len(data[key]["app_ids"])
+    assert data["logic"]["cnt"] + data["external_only"]["cnt"] + data["both"]["cnt"] \
+        == run["summary"]["apps_with_diffs"]

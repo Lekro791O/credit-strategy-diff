@@ -1,0 +1,41 @@
+         27796 function calls (27346 primitive calls) in 1.035 seconds
+
+   Ordered by: cumulative time
+   List reduced from 704 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.011    0.011    1.035    1.035 <repo>/api/main.py:254(facts)
+        1    0.000    0.000    0.864    0.864 <repo>/api/facts.py:147(fact_result)
+        3    0.000    0.000    0.863    0.288 <repo>/api/facts.py:131(_group)
+        3    0.733    0.244    0.863    0.288 <repo>/api/mart.py:243(query)
+        2    0.000    0.000    0.161    0.080 <repo>/api/runs.py:45(load)
+        2    0.021    0.010    0.143    0.071 <repo>/.venv/lib/python3.13/site-packages/pydantic/main.py:802(model_validate_json)
+        2    0.122    0.061    0.122    0.061 {method 'validate_json' of 'pydantic_core._pydantic_core.SchemaValidator' objects}
+        3    0.000    0.000    0.088    0.029 <repo>/api/mart.py:205(_ensure_store)
+        1    0.000    0.000    0.084    0.084 <repo>/api/runs.py:315(open_mart)
+        9    0.000    0.000    0.069    0.008 {built-in method builtins.next}
+        8    0.068    0.009    0.069    0.009 <repo>/mart/store.py:123(connection)
+        4    0.000    0.000    0.059    0.015 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:136(__enter__)
+     27/1    0.000    0.000    0.053    0.053 <frozen importlib._bootstrap>:1349(_find_and_load)
+     27/1    0.000    0.000    0.053    0.053 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+     63/1    0.000    0.000    0.053    0.053 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+     10/2    0.000    0.000    0.053    0.027 {built-in method builtins.__import__}
+     26/1    0.000    0.000    0.053    0.053 <frozen importlib._bootstrap>:911(_load_unlocked)
+     24/1    0.000    0.000    0.053    0.053 <frozen importlib._bootstrap_external>:1020(exec_module)
+     60/1    0.009    0.000    0.053    0.053 {built-in method builtins.exec}
+        1    0.000    0.000    0.053    0.053 <repo>/mart/__init__.py:1(<module>)
+        1    0.000    0.000    0.052    0.052 <repo>/mart/store.py:1(<module>)
+        1    0.000    0.000    0.052    0.052 <repo>/.venv/lib/python3.13/site-packages/duckdb/__init__.py:1(<module>)
+        1    0.008    0.008    0.035    0.035 <repo>/mart/store.py:82(__init__)
+    17/10    0.000    0.000    0.030    0.003 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+        1    0.000    0.000    0.020    0.020 <repo>/.venv/lib/python3.13/site-packages/duckdb/_relation.py:1(<module>)
+       26    0.000    0.000    0.020    0.001 <frozen importlib._bootstrap>:806(module_from_spec)
+        2    0.000    0.000    0.019    0.010 <frozen importlib._bootstrap_external>:1318(create_module)
+        2    0.019    0.010    0.019    0.010 {built-in method _imp.create_dynamic}
+        3    0.000    0.000    0.018    0.006 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:539(read_text)
+        3    0.000    0.000    0.018    0.006 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:628(read_text)
+        2    0.000    0.000    0.018    0.009 <repo>/api/persistence.py:31(atomic_read)
+        3    0.009    0.003    0.017    0.006 {method 'read' of '_io.TextIOWrapper' objects}
+       36    0.000    0.000    0.015    0.000 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/dataclasses.py:1294(wrap)
+       36    0.001    0.000    0.015    0.000 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/dataclasses.py:929(_process_class)
+        4    0.000    0.000    0.010    0.003 /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:145(__exit__)

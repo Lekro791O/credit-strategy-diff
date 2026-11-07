@@ -22,6 +22,10 @@ def segment(before, after, *, app_id):
             'CUTOFF': t.get('cutOff', {}).get('name', ''),
             'REJECT_REASON': t.get('rejectReason') or '',
             'DECISION': t.get('decision', ''),
+            'PARTNER_ID': str(t.get('partner_id', '')),
+            'PARTNER_NAME': t.get('partner_name', ''),
+            'PARTNER_TYPE': t.get('partner_type', ''),
+            'ROUTING_METHOD': t.get('routing_method', ''),
         } for t in trials}
         row['PRODUCT_DETAILS_' + source] = details
         for field in ('PD_MODEL', 'CUTOFF', 'REJECT_REASON'):
