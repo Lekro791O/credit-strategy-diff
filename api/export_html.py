@@ -69,7 +69,6 @@ tr.fail.low td{{background:#fdf6ec;color:#7a6a4f}}
 <h2>{_esc(run.get('config', {}).get('name', ''))} · прогон {_esc(run.get('id', ''))}</h2>
 <div class="cards">{cards}<div class="card"><div class="num">{fails}</div>
 <div class="lbl">проверок FAIL</div></div></div>
-<p><a href="{html.escape(app_url, quote=True)}">Сводный отчёт приложения →</a></p>
 <table><thead><tr><th>проверка</th>{''.join(f'<th>{COL_TITLES[c]}</th>' for c in COLS)}<th>заявки</th></tr></thead>
 <tbody>{body}</tbody></table>
 <h2>Диагностика исполнения</h2><ul>{diagnostics}</ul>
